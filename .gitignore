@@ -1,0 +1,49 @@
+# === 环境/IDE ===
+.claude/
+.trae/
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+Thumbs.db
+
+# === 构建输出 ===
+frontend/dist/
+backend/target/
+*.class
+*.jar
+*.war
+
+# === 依赖 ===
+frontend/node_modules/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# === 敏感配置（应使用环境变量） ===
+backend/src/main/resources/application-local.yml
+*.env
+.env.local
+
+# === 用户上传数据（保留目录结构） ===
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/avatars/
+!backend/uploads/
+
+# === 非代码目录（课设文档等） ===
+Redis-8.8.0-Windows-x64-msys2-with-Service/
+作业文档/
+原创代码/
+已优化方案/
+文献/
+升级方案.md
+升级方案.txt
+问题.docx
+最终补充.txt
+AI面试系统_代码审查与优化报告.md
+AI面试系统_需求规格说明书.md
+AI面试系统_项目任务书.md
+start.bat

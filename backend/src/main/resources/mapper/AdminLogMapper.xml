@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.AdminLogMapper">
+
+    <resultMap id="adminLogResultMap" type="org.backend.entity.AdminLog">
+        <id property="id" column="id"/>
+        <result property="adminId" column="admin_id"/>
+        <result property="adminName" column="admin_name"/>
+        <result property="action" column="action"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="detail" column="detail"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findList" resultMap="adminLogResultMap">
+        SELECT id, admin_id, admin_name, action, target_type, target_id, detail, ip_address, created_at
+        FROM admin_log
+        <where>
+            <if test="action != null and action != ''">
+                AND action = #{action}
+            </if>
+            <if test="startDate != null">
+                AND created_at &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND created_at &lt;= #{endDate}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*) FROM admin_log
+        <where>
+            <if test="action != null and action != ''">
+                AND action = #{action}
+            </if>
+            <if test="startDate != null">
+                AND created_at &gt;= #{startDate}
+            </if>
+            <if test="endDate != null">
+                AND created_at &lt;= #{endDate}
+            </if>
+        </where>
+    </select>
+</mapper>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.UserFavoriteMapper">
+
+    <resultMap id="questionFromFavorite" type="org.backend.entity.Question">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="category" column="category"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="direction" column="direction"/>
+        <result property="viewCount" column="view_count"/>
+        <result property="favoriteCount" column="favorite_count"/>
+        <result property="createdAt" column="created_at"/>
+        <collection property="tags" ofType="org.backend.entity.Tag"
+                    select="org.backend.mapper.QuestionMapper.findTagsByQuestionId" column="id"/>
+    </resultMap>
+
+    <select id="findFavoriteQuestions" resultMap="questionFromFavorite">
+        SELECT q.id, q.title, q.category, q.difficulty, q.direction,
+               q.view_count, q.favorite_count, q.created_at
+        FROM question q
+        INNER JOIN user_favorite uf ON q.id = uf.question_id
+        WHERE uf.user_id = #{userId} AND q.is_deleted = 0
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+        ORDER BY uf.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countFavoriteQuestions" resultType="int">
+        SELECT COUNT(*)
+        FROM question q
+        INNER JOIN user_favorite uf ON q.id = uf.question_id
+        WHERE uf.user_id = #{userId} AND q.is_deleted = 0
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+    </select>
+</mapper>

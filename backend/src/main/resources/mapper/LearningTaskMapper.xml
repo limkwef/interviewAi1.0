@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.LearningTaskMapper">
+
+    <resultMap id="learningTaskResultMap" type="org.backend.entity.LearningTask">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="phaseIndex" column="phase_index"/>
+        <result property="taskIndex" column="task_index"/>
+        <result property="phaseName" column="phase_name"/>
+        <result property="taskText" column="task_text"/>
+        <result property="focusArea" column="focus_area"/>
+        <result property="completed" column="completed"/>
+        <result property="completedAt" column="completed_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.LearningTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO learning_task (user_id, phase_index, task_index, phase_name, task_text, focus_area, completed)
+        VALUES (#{userId}, #{phaseIndex}, #{taskIndex}, #{phaseName}, #{taskText}, #{focusArea}, #{completed})
+    </insert>
+
+    <insert id="insertBatch">
+        INSERT INTO learning_task (user_id, phase_index, task_index, phase_name, task_text, focus_area, completed)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.phaseIndex}, #{item.taskIndex}, #{item.phaseName}, #{item.taskText}, #{item.focusArea}, #{item.completed})
+        </foreach>
+    </insert>
+
+    <update id="update" parameterType="org.backend.entity.LearningTask">
+        UPDATE learning_task
+        SET phase_name = #{phaseName}, task_text = #{taskText}, focus_area = #{focusArea},
+            completed = #{completed}, completed_at = #{completedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="markComplete">
+        UPDATE learning_task
+        SET completed = 1, completed_at = NOW()
+        WHERE user_id = #{userId} AND phase_index = #{phaseIndex} AND task_index = #{taskIndex}
+    </update>
+
+    <update id="unmarkComplete">
+        UPDATE learning_task
+        SET completed = 0, completed_at = NULL
+        WHERE user_id = #{userId} AND phase_index = #{phaseIndex} AND task_index = #{taskIndex}
+    </update>
+
+    <select id="findByUserPhaseTask" resultMap="learningTaskResultMap">
+        SELECT * FROM learning_task
+        WHERE user_id = #{userId} AND phase_index = #{phaseIndex} AND task_index = #{taskIndex}
+    </select>
+
+    <select id="findByUserId" resultMap="learningTaskResultMap">
+        SELECT * FROM learning_task WHERE user_id = #{userId} ORDER BY phase_index, task_index
+    </select>
+
+    <select id="findByUserAndPhase" resultMap="learningTaskResultMap">
+        SELECT * FROM learning_task
+        WHERE user_id = #{userId} AND phase_index = #{phaseIndex}
+        ORDER BY task_index
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM learning_task WHERE user_id = #{userId}
+    </select>
+
+    <select id="countCompletedByUserId" resultType="int">
+        SELECT COUNT(*) FROM learning_task WHERE user_id = #{userId} AND completed = 1
+    </select>
+
+    <delete id="deleteByUserId">
+        DELETE FROM learning_task WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteByUserIdAndCompleted">
+        DELETE FROM learning_task WHERE user_id = #{userId} AND completed = #{completed}
+    </delete>
+
+</mapper>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.QuestionMapper">
+
+    <resultMap id="questionResultMap" type="org.backend.entity.Question">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="answer" column="answer"/>
+        <result property="category" column="category"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="direction" column="direction"/>
+        <result property="viewCount" column="view_count"/>
+        <result property="favoriteCount" column="favorite_count"/>
+        <result property="isDeleted" column="is_deleted"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <collection property="tags" ofType="org.backend.entity.Tag"
+                    select="findTagsByQuestionId" column="id"/>
+    </resultMap>
+
+    <select id="findTagsByQuestionId" resultType="org.backend.entity.Tag">
+        SELECT t.id, t.name
+        FROM tag t
+        INNER JOIN question_tag_rel qtr ON t.id = qtr.tag_id
+        WHERE qtr.question_id = #{questionId}
+    </select>
+
+    <select id="findList" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, is_deleted, created_at, updated_at
+        FROM question
+        <where>
+            is_deleted = 0
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="difficulty != null and difficulty != ''">
+                AND difficulty = #{difficulty}
+            </if>
+            <if test="direction != null and direction != ''">
+                AND direction = #{direction}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*) FROM question
+        <where>
+            is_deleted = 0
+            <if test="category != null and category != ''">
+                AND category = #{category}
+            </if>
+            <if test="difficulty != null and difficulty != ''">
+                AND difficulty = #{difficulty}
+            </if>
+            <if test="direction != null and direction != ''">
+                AND direction = #{direction}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <select id="findById" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, is_deleted, created_at, updated_at
+        FROM question
+        WHERE id = #{id} AND is_deleted = 0
+    </select>
+
+    <update id="incrementViewCount">
+        UPDATE question SET view_count = view_count + 1 WHERE id = #{id}
+    </update>
+
+    <update id="incrementFavoriteCount">
+        UPDATE question SET favorite_count = favorite_count + 1 WHERE id = #{id}
+    </update>
+
+    <update id="decrementFavoriteCount">
+        UPDATE question SET favorite_count = GREATEST(favorite_count - 1, 0) WHERE id = #{id}
+    </update>
+
+    <select id="findRandomByDirection" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, created_at, updated_at
+        FROM question
+        WHERE is_deleted = 0
+        <if test="direction != null and direction != ''">
+            AND direction = #{direction}
+        </if>
+        ORDER BY RAND()
+        LIMIT #{limit}
+    </select>
+
+    <select id="findRandomByDirectionAndDifficulty" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, created_at, updated_at
+        FROM question
+        WHERE is_deleted = 0
+        <if test="direction != null and direction != ''">
+            AND direction = #{direction}
+        </if>
+        AND difficulty = #{difficulty}
+        ORDER BY RAND()
+        LIMIT #{limit}
+    </select>
+
+    <select id="findRandomWithExclusion" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, created_at, updated_at
+        FROM question
+        WHERE is_deleted = 0
+        <if test="direction != null and direction != ''">
+            AND direction = #{direction}
+        </if>
+        <if test="excludeIds != null and excludeIds.size > 0">
+            AND id NOT IN
+            <foreach collection="excludeIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        ORDER BY RAND()
+        LIMIT #{limit}
+    </select>
+
+    <select id="findByIds" resultMap="questionResultMap">
+        SELECT id, title, content, answer, category, difficulty, direction,
+               view_count, favorite_count, is_deleted, created_at, updated_at
+        FROM question
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND is_deleted = 0
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO question (title, content, answer, category, difficulty, direction)
+        VALUES (#{title}, #{content}, #{answer}, #{category}, #{difficulty}, #{direction})
+    </insert>
+
+    <update id="update">
+        UPDATE question
+        <set>
+            <if test="title != null and title != ''">
+                title = #{title},
+            </if>
+            <if test="content != null and content != ''">
+                content = #{content},
+            </if>
+            <if test="answer != null and answer != ''">
+                answer = #{answer},
+            </if>
+            <if test="category != null and category != ''">
+                category = #{category},
+            </if>
+            <if test="difficulty != null and difficulty != ''">
+                difficulty = #{difficulty},
+            </if>
+            <if test="direction != null and direction != ''">
+                direction = #{direction},
+            </if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+</mapper>

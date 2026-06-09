@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.InterviewMessageMapper">
+
+    <resultMap id="messageResultMap" type="org.backend.entity.InterviewMessage">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="messageType" column="message_type"/>
+        <result property="questionIndex" column="question_index"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.InterviewMessage" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_message (session_id, role, content, message_type, question_index)
+        VALUES (#{sessionId}, #{role}, #{content}, #{messageType}, #{questionIndex})
+    </insert>
+
+    <select id="findBySessionId" resultMap="messageResultMap">
+        SELECT id, session_id, role, content, message_type, question_index, created_at
+        FROM interview_message
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="countBySessionId" resultType="int">
+        SELECT COUNT(*) FROM interview_message WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="countUserMessages" resultType="int">
+        SELECT COUNT(*) FROM interview_message WHERE session_id = #{sessionId} AND role = 'user'
+    </select>
+
+    <delete id="deleteBySessionId">
+        DELETE FROM interview_message WHERE session_id = #{sessionId}
+    </delete>
+
+    <select id="findLatestBySessionId" resultMap="messageResultMap">
+        SELECT id, session_id, role, content, message_type, question_index, created_at
+        FROM interview_message
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateContent">
+        UPDATE interview_message SET content = #{content} WHERE id = #{id}
+    </update>
+
+    <update id="updateMessageTypeAndQuestionIndex">
+        UPDATE interview_message SET message_type = #{messageType}, question_index = #{questionIndex} WHERE id = #{id}
+    </update>
+
+</mapper>

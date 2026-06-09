@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: backend
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/interview?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    username: root
+    password: ${DB_PASSWORD:your_mysql_password}
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: ${REDIS_PASSWORD:your_redis_password}
+      database: 1
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+upload:
+  path: ./uploads/
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+jwt:
+  secret: ${JWT_SECRET:your_jwt_secret_key_at_least_32_chars_long}
+  expiration: 86400000
+
+ai:
+  api-key: ${AI_API_KEY:your_deepseek_api_key}
+  api-url: https://api.deepseek.com
+  model: deepseek-chat
+  max-tokens: 2048
+  temperature: 0.7
+
+baidu:
+  speech:
+    api-key: ${BAIDU_API_KEY:your_baidu_api_key}
+    secret-key: ${BAIDU_SECRET_KEY:your_baidu_secret_key}
+    tts:
+      per: 4
+      spd: 5
+      pit: 5
+      vol: 5
+    asr:
+      dev-pid: 1537
+      format: pcm
+      rate: 16000

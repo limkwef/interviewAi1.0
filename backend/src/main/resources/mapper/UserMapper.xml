@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.UserMapper">
+    <resultMap id="userResultMap" type="org.backend.entity.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="email" column="email"/>
+        <result property="phone" column="phone"/>
+        <result property="avatar" column="avatar"/>
+        <result property="targetPosition" column="target_position"/>
+        <result property="techStack" column="tech_stack"/>
+        <result property="role" column="role"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <update id="updateUser">
+        UPDATE user
+        <set>
+            <if test="username != null and username != ''">
+                username = #{username},
+            </if>
+            <if test="phone != null">
+                phone = #{phone},
+            </if>
+            <if test="avatar != null and avatar != ''">
+                avatar = #{avatar},
+            </if>
+            <if test="targetPosition != null">
+                target_position = #{targetPosition},
+            </if>
+            <if test="techStack != null">
+                tech_stack = #{techStack},
+            </if>
+            <if test="role != null and role != ''">
+                role = #{role},
+            </if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findList" resultMap="userResultMap">
+        SELECT id, username, email, phone, avatar, target_position, tech_stack, role, status, created_at, updated_at
+        FROM user
+        <where>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (username LIKE CONCAT('%', #{keyword}, '%') OR email LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*) FROM user
+        <where>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (username LIKE CONCAT('%', #{keyword}, '%') OR email LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+    </select>
+    <select id="countGroupByDate" resultType="java.util.Map">
+        SELECT DATE(created_at) AS date, COUNT(*) AS count
+        FROM user
+        WHERE created_at &gt;= #{startDate}
+        GROUP BY DATE(created_at)
+        ORDER BY date ASC
+    </select>
+</mapper>

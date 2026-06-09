@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.MistakeMapper">
+
+    <!-- ======================== 错题记录 ======================== -->
+
+    <resultMap id="recordResultMap" type="org.backend.entity.MistakeRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="questionId" column="question_id"/>
+        <result property="firstMistakeTime" column="first_mistake_time"/>
+        <result property="lastMistakeTime" column="last_mistake_time"/>
+        <result property="mistakeCount" column="mistake_count"/>
+        <result property="status" column="status"/>
+        <result property="masteredTime" column="mastered_time"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="questionTitle" column="question_title"/>
+        <result property="category" column="category"/>
+        <result property="difficulty" column="difficulty"/>
+    </resultMap>
+
+    <select id="findList" resultMap="recordResultMap">
+        SELECT r.id, r.user_id, r.question_id, r.first_mistake_time, r.last_mistake_time,
+               r.mistake_count, r.status, r.mastered_time, r.created_at, r.updated_at,
+               q.title AS question_title, q.category, q.difficulty
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId}
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+        <if test="status != null">
+            AND r.status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (q.title LIKE CONCAT('%', #{keyword}, '%') OR q.content LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY r.last_mistake_time DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="int">
+        SELECT COUNT(*)
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId}
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+        <if test="status != null">
+            AND r.status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (q.title LIKE CONCAT('%', #{keyword}, '%') OR q.content LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <select id="findById" resultMap="recordResultMap">
+        SELECT r.id, r.user_id, r.question_id, r.first_mistake_time, r.last_mistake_time,
+               r.mistake_count, r.status, r.mastered_time, r.created_at, r.updated_at,
+               q.title AS question_title, q.category, q.difficulty
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.id = #{id}
+    </select>
+
+    <select id="findByUserAndQuestion" resultMap="recordResultMap">
+        SELECT r.id, r.user_id, r.question_id, r.first_mistake_time, r.last_mistake_time,
+               r.mistake_count, r.status, r.mastered_time, r.created_at, r.updated_at,
+               q.title AS question_title, q.category, q.difficulty
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId} AND r.question_id = #{questionId}
+    </select>
+
+    <insert id="insert" parameterType="org.backend.entity.MistakeRecord" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mistake_record (user_id, question_id, first_mistake_time, last_mistake_time, mistake_count, status)
+        VALUES (#{userId}, #{questionId}, #{firstMistakeTime}, #{lastMistakeTime}, #{mistakeCount}, #{status})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE mistake_record
+        SET status = #{status},
+            mastered_time = #{masteredTime}
+        WHERE id = #{id}
+    </update>
+
+    <update id="incrementMistakeCount">
+        UPDATE mistake_record
+        SET mistake_count = mistake_count + 1,
+            last_mistake_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateLastMistakeTime">
+        UPDATE mistake_record
+        SET last_mistake_time = #{time}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM mistake_record WHERE id = #{id}
+    </delete>
+
+    <!-- ======================== 统计 ======================== -->
+
+    <select id="findStats" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS pendingReview,
+            SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS mastered
+        FROM mistake_record
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="findCategoryStats" resultType="java.util.Map">
+        SELECT q.category, COUNT(*) AS count
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId}
+        GROUP BY q.category
+        ORDER BY count DESC
+    </select>
+
+    <!-- 按岗位过滤的错题分类统计 -->
+    <select id="findCategoryStatsByPosition" resultType="java.util.Map">
+        SELECT q.category, COUNT(DISTINCT r.id) AS count
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        INNER JOIN mistake_answer_detail d ON r.id = d.mistake_id
+        INNER JOIN interview_session s ON d.interview_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+        GROUP BY q.category
+        ORDER BY count DESC
+    </select>
+
+    <!-- 错题知识点标签统计（关联错题 → 题目 → 标签） -->
+    <select id="findTagStats" resultType="java.util.Map">
+        SELECT
+            t.name AS tag_name,
+            COUNT(*) AS wrong_count,
+            MAX(q.title) AS sample_question
+        FROM mistake_record mr
+        JOIN question q ON mr.question_id = q.id AND q.is_deleted = 0
+        LEFT JOIN question_tag_rel qtr ON q.id = qtr.question_id
+        LEFT JOIN tag t ON qtr.tag_id = t.id
+        WHERE mr.user_id = #{userId}
+          AND mr.status = 0
+        GROUP BY t.name
+        ORDER BY wrong_count DESC
+        LIMIT 5
+    </select>
+
+    <!-- ======================== 错误详情 ======================== -->
+
+    <resultMap id="detailResultMap" type="org.backend.entity.MistakeAnswerDetail">
+        <id property="id" column="id"/>
+        <result property="mistakeId" column="mistake_id"/>
+        <result property="interviewId" column="interview_id"/>
+        <result property="userAnswer" column="user_answer"/>
+        <result property="aiComment" column="ai_comment"/>
+        <result property="category" column="category"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="findDetailsByMistakeId" resultMap="detailResultMap">
+        SELECT id, mistake_id, interview_id, user_answer, ai_comment, category, created_at
+        FROM mistake_answer_detail
+        WHERE mistake_id = #{mistakeId}
+        ORDER BY created_at DESC
+    </select>
+
+    <insert id="insertDetail" parameterType="org.backend.entity.MistakeAnswerDetail" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mistake_answer_detail (mistake_id, interview_id, user_answer, ai_comment, category)
+        VALUES (#{mistakeId}, #{interviewId}, #{userAnswer}, #{aiComment}, #{category})
+    </insert>
+
+    <!-- ======================== 重做 ======================== -->
+
+    <select id="findReviewQuestions" resultType="java.util.Map">
+        SELECT r.id AS mistakeRecordId, r.question_id AS id, q.title, q.content, q.answer,
+               q.difficulty, q.category, r.mistake_count AS mistakeCount
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId}
+          AND r.status = 0
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+        ORDER BY r.last_mistake_time DESC
+        LIMIT #{count}
+    </select>
+
+    <select id="countReviewQuestions" resultType="int">
+        SELECT COUNT(*)
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.user_id = #{userId}
+          AND r.status = 0
+        <if test="category != null and category != ''">
+            AND q.category = #{category}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+            AND q.difficulty = #{difficulty}
+        </if>
+    </select>
+
+    <select id="findReviewQuestionsByIds" resultType="java.util.Map">
+        SELECT r.id AS mistakeRecordId, r.question_id AS id, q.title, q.content, q.answer,
+               q.difficulty, q.category, r.mistake_count AS mistakeCount
+        FROM mistake_record r
+        INNER JOIN question q ON r.question_id = q.id AND q.is_deleted = 0
+        WHERE r.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper>

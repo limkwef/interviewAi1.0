@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.InterviewSessionMapper">
+
+    <resultMap id="sessionResultMap" type="org.backend.entity.InterviewSession">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="position" column="position"/>
+        <result property="round" column="round"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="questionCount" column="question_count"/>
+        <result property="currentQuestion" column="current_question"/>
+        <result property="questionIds" column="question_ids"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="reportCreatedAt" column="report_created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.InterviewSession" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_session (user_id, position, round, difficulty, question_count, current_question, question_ids, status)
+        VALUES (#{userId}, #{position}, #{round}, #{difficulty}, #{questionCount}, #{currentQuestion}, #{questionIds}, #{status})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE interview_session SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="updateCurrentQuestion">
+        UPDATE interview_session SET current_question = #{currentQuestion} WHERE id = #{id}
+    </update>
+
+    <update id="updateQuestionIds">
+        UPDATE interview_session SET question_ids = #{questionIds} WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="sessionResultMap">
+        SELECT id, user_id, position, round, difficulty, question_count, current_question,
+               question_ids, status, created_at, updated_at
+        FROM interview_session WHERE id = #{id}
+    </select>
+
+    <select id="findByUserId" resultMap="sessionResultMap">
+        SELECT s.id, s.user_id, s.position, s.round, s.difficulty, s.question_count,
+               s.current_question, s.question_ids, s.status, s.created_at, s.updated_at,
+               r.total_score, r.level, r.created_at AS report_created_at
+        FROM interview_session s
+        LEFT JOIN interview_report r ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+        <if test="status != null and status != ''">
+            AND s.status = #{status}
+        </if>
+        ORDER BY s.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM interview_session
+        WHERE user_id = #{userId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM interview_session WHERE id = #{id}
+    </delete>
+
+</mapper>

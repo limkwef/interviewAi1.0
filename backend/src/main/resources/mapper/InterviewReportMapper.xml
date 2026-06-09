@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.InterviewReportMapper">
+
+    <resultMap id="reportResultMap" type="org.backend.entity.InterviewReport">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="level" column="level"/>
+        <result property="technicalScore" column="technical_score"/>
+        <result property="expressionScore" column="expression_score"/>
+        <result property="logicScore" column="logic_score"/>
+        <result property="completenessScore" column="completeness_score"/>
+        <result property="innovationScore" column="innovation_score"/>
+        <result property="suggestion" column="suggestion"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="position" column="position"/>
+        <result property="round" column="round"/>
+        <result property="difficulty" column="difficulty"/>
+        <collection property="comments" ofType="org.backend.entity.ReportComment"
+                    select="findCommentsByReportId" column="id"/>
+    </resultMap>
+
+    <select id="findCommentsByReportId" resultType="org.backend.entity.ReportComment">
+        SELECT id, report_id, question_text, user_answer, score, comment, sort_order
+        FROM report_comment
+        WHERE report_id = #{reportId}
+        ORDER BY sort_order ASC
+    </select>
+
+    <insert id="insert" parameterType="org.backend.entity.InterviewReport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_report (session_id, user_id, total_score, level, technical_score,
+            expression_score, logic_score, completeness_score, innovation_score, suggestion)
+        VALUES (#{sessionId}, #{userId}, #{totalScore}, #{level}, #{technicalScore},
+            #{expressionScore}, #{logicScore}, #{completenessScore}, #{innovationScore}, #{suggestion})
+    </insert>
+
+    <select id="findById" resultMap="reportResultMap">
+        SELECT id, session_id, user_id, total_score, level, technical_score, expression_score,
+               logic_score, completeness_score, innovation_score, suggestion, created_at
+        FROM interview_report WHERE id = #{id}
+    </select>
+
+    <select id="findBySessionId" resultMap="reportResultMap">
+        SELECT id, session_id, user_id, total_score, level, technical_score, expression_score,
+               logic_score, completeness_score, innovation_score, suggestion, created_at
+        FROM interview_report WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="findByUserId" resultMap="reportResultMap">
+        SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
+               r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
+               r.suggestion, r.created_at,
+               s.position, s.round, s.difficulty
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+        ORDER BY r.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM interview_report WHERE user_id = #{userId}
+    </select>
+
+    <select id="findGrowthData" resultType="java.util.Map">
+        SELECT r.id AS sessionId,
+               r.total_score AS score,
+               r.created_at AS createdAt,
+               r.technical_score AS technical,
+               r.expression_score AS expression,
+               r.logic_score AS logic,
+               r.completeness_score AS completeness,
+               r.innovation_score AS innovation
+        FROM interview_report r
+        WHERE r.user_id = #{userId}
+        ORDER BY r.created_at ASC
+    </select>
+
+    <select id="findStats" resultType="java.util.Map">
+        SELECT COUNT(*) AS totalInterviews,
+               IFNULL(AVG(total_score), 0) AS avgScore,
+               IFNULL(MAX(total_score), 0) AS highestScore,
+               IFNULL(AVG(technical_score), 0) AS avgTechnical,
+               IFNULL(AVG(expression_score), 0) AS avgExpression,
+               IFNULL(AVG(logic_score), 0) AS avgLogic,
+               IFNULL(AVG(completeness_score), 0) AS avgCompleteness,
+               IFNULL(AVG(innovation_score), 0) AS avgInnovation
+        FROM interview_report
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 同岗位所有用户的最高面试分数（用于计算分位数和排名） -->
+    <select id="findPositionScoreDistribution" resultType="java.util.Map">
+        SELECT r.user_id AS userId, MAX(r.total_score) AS bestScore
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE s.position = #{position}
+        GROUP BY r.user_id
+        ORDER BY bestScore DESC
+    </select>
+
+    <!-- 同岗位同轮次所有用户的最高面试分数（用于诊断页精确对标） -->
+    <select id="findPositionRoundScoreDistribution" resultType="java.util.Map">
+        SELECT r.user_id AS userId, MAX(r.total_score) AS bestScore
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE s.position = #{position}
+          AND s.round = #{round}
+        GROUP BY r.user_id
+        ORDER BY bestScore DESC
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM interview_report WHERE id = #{id}
+    </delete>
+
+    <!-- 统计用户实际练习过的题目数（通过 report_comment 关联 interview_report） -->
+    <select id="countUserPracticedQuestions" resultType="int">
+        SELECT COUNT(*)
+        FROM report_comment rc
+        INNER JOIN interview_report ir ON rc.report_id = ir.id
+        WHERE ir.user_id = #{userId}
+    </select>
+
+    <!-- 按条件过滤的报告列表（支持 position/round/difficulty/score/date） -->
+    <select id="findByUserIdFiltered" resultMap="reportResultMap">
+        SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
+               r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
+               r.suggestion, r.created_at,
+               s.position, s.round, s.difficulty
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+        <if test="position != null and position != ''">
+          AND s.position = #{position}
+        </if>
+        <if test="round != null and round != ''">
+          AND s.round = #{round}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+          AND s.difficulty = #{difficulty}
+        </if>
+        <if test="scoreMin != null">
+          AND r.total_score >= #{scoreMin}
+        </if>
+        <if test="scoreMax != null">
+          AND r.total_score &lt;= #{scoreMax}
+        </if>
+        <if test="startDate != null and startDate != ''">
+          AND r.created_at >= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+          AND r.created_at &lt; DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+        </if>
+        ORDER BY r.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 按条件过滤的报告数量 -->
+    <select id="countByUserIdFiltered" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+        <if test="position != null and position != ''">
+          AND s.position = #{position}
+        </if>
+        <if test="round != null and round != ''">
+          AND s.round = #{round}
+        </if>
+        <if test="difficulty != null and difficulty != ''">
+          AND s.difficulty = #{difficulty}
+        </if>
+        <if test="scoreMin != null">
+          AND r.total_score >= #{scoreMin}
+        </if>
+        <if test="scoreMax != null">
+          AND r.total_score &lt;= #{scoreMax}
+        </if>
+        <if test="startDate != null and startDate != ''">
+          AND r.created_at >= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+          AND r.created_at &lt; DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+        </if>
+    </select>
+
+    <!-- 按岗位过滤的成长趋势（不分轮次） -->
+    <select id="findGrowthDataByPosition" resultType="java.util.Map">
+        SELECT r.id AS sessionId,
+               r.total_score AS score,
+               r.created_at AS createdAt,
+               r.technical_score AS technical,
+               r.expression_score AS expression,
+               r.logic_score AS logic,
+               r.completeness_score AS completeness,
+               r.innovation_score AS innovation
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+        ORDER BY r.created_at ASC
+    </select>
+
+    <!-- 按岗位过滤的统计 -->
+    <select id="findStatsByPosition" resultType="java.util.Map">
+        SELECT COUNT(*) AS totalInterviews,
+               IFNULL(AVG(r.total_score), 0) AS avgScore,
+               IFNULL(MAX(r.total_score), 0) AS highestScore,
+               IFNULL(AVG(r.technical_score), 0) AS avgTechnical,
+               IFNULL(AVG(r.expression_score), 0) AS avgExpression,
+               IFNULL(AVG(r.logic_score), 0) AS avgLogic,
+               IFNULL(AVG(r.completeness_score), 0) AS avgCompleteness,
+               IFNULL(AVG(r.innovation_score), 0) AS avgInnovation
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+    </select>
+
+    <!-- 按岗位+轮次过滤的统计（知识雷达图专用） -->
+    <select id="findStatsByPositionAndRound" resultType="java.util.Map">
+        SELECT COUNT(*) AS totalInterviews,
+               IFNULL(AVG(r.total_score), 0) AS avgScore,
+               IFNULL(AVG(r.technical_score), 0) AS avgTechnical,
+               IFNULL(AVG(r.expression_score), 0) AS avgExpression,
+               IFNULL(AVG(r.logic_score), 0) AS avgLogic,
+               IFNULL(AVG(r.completeness_score), 0) AS avgCompleteness,
+               IFNULL(AVG(r.innovation_score), 0) AS avgInnovation
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+          AND s.round = #{round}
+    </select>
+
+    <!-- 按岗位+轮次过滤的成长趋势 -->
+    <select id="findGrowthDataByPositionAndRound" resultType="java.util.Map">
+        SELECT r.id AS sessionId,
+               r.total_score AS score,
+               r.created_at AS createdAt,
+               r.technical_score AS technical,
+               r.expression_score AS expression,
+               r.logic_score AS logic,
+               r.completeness_score AS completeness,
+               r.innovation_score AS innovation
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+          AND s.round = #{round}
+        ORDER BY r.created_at ASC
+    </select>
+
+    <!-- 按岗位过滤的报告列表 -->
+    <select id="findByUserIdAndPosition" resultMap="reportResultMap">
+        SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
+               r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
+               r.suggestion, r.created_at,
+               s.position, s.round, s.difficulty
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+        ORDER BY r.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserIdAndPosition" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_report r
+        INNER JOIN interview_session s ON r.session_id = s.id
+        WHERE r.user_id = #{userId}
+          AND s.position = #{position}
+    </select>
+
+</mapper>

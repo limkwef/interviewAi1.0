@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.DiagnosisReportMapper">
+
+    <resultMap id="diagnosisResultMap" type="org.backend.entity.DiagnosisReport">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="reportId" column="report_id"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="level" column="level"/>
+        <result property="scoreChange" column="score_change"/>
+        <result property="previousScore" column="previous_score"/>
+        <result property="knowledgeAnalysis" column="knowledge_analysis"/>
+        <result property="thinkingAnalysis" column="thinking_analysis"/>
+        <result property="mistakePatterns" column="mistake_patterns"/>
+        <result property="learningPlan" column="learning_plan"/>
+        <result property="detailedComments" column="detailed_comments"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.DiagnosisReport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO diagnosis_report (user_id, session_id, report_id, total_score, level,
+            score_change, previous_score, knowledge_analysis, thinking_analysis,
+            mistake_patterns, learning_plan, detailed_comments)
+        VALUES (#{userId}, #{sessionId}, #{reportId}, #{totalScore}, #{level},
+            #{scoreChange}, #{previousScore}, #{knowledgeAnalysis}, #{thinkingAnalysis},
+            #{mistakePatterns}, #{learningPlan}, #{detailedComments})
+    </insert>
+
+    <select id="findById" resultMap="diagnosisResultMap">
+        SELECT * FROM diagnosis_report WHERE id = #{id}
+    </select>
+
+    <select id="findBySessionId" resultMap="diagnosisResultMap">
+        SELECT * FROM diagnosis_report WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="findByReportId" resultMap="diagnosisResultMap">
+        SELECT * FROM diagnosis_report WHERE report_id = #{reportId}
+    </select>
+
+    <select id="findLatestByUserId" resultMap="diagnosisResultMap">
+        SELECT * FROM diagnosis_report WHERE user_id = #{userId}
+        ORDER BY created_at DESC LIMIT 1
+    </select>
+
+    <select id="findLatestByUserIdAndPosition" resultMap="diagnosisResultMap">
+        SELECT d.*
+        FROM diagnosis_report d
+        INNER JOIN interview_session s ON d.session_id = s.id
+        WHERE d.user_id = #{userId}
+          AND s.position = #{position}
+        ORDER BY d.created_at DESC LIMIT 1
+    </select>
+
+    <select id="findByUserId" resultMap="diagnosisResultMap">
+        SELECT * FROM diagnosis_report WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM diagnosis_report WHERE user_id = #{userId}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM diagnosis_report WHERE id = #{id}
+    </delete>
+
+</mapper>
