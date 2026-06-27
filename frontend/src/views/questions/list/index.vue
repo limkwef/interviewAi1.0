@@ -140,22 +140,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, RefreshRight, View, Star, StarFilled } from '@element-plus/icons-vue'
 import { getQuestionList, getTags, addFavorite, removeFavorite } from '@/api/question'
+import { categoryMap } from '@/utils/constants'
 
 const router = useRouter()
 
-const categoryOptions = [
-  { value: 'java_basic', label: 'Java基础' },
-  { value: 'spring', label: 'Spring框架' },
-  { value: 'database', label: '数据库' },
-  { value: 'frontend', label: '前端' },
-  { value: 'devops', label: '运维部署' },
-  { value: 'architecture', label: '系统架构' }
-]
+const categoryOptions = computed(() =>
+  Object.entries(categoryMap).map(([value, label]) => ({ value, label }))
+)
 
 const difficultyOptions = [
   { value: 'easy', label: '简单' },
@@ -163,7 +159,7 @@ const difficultyOptions = [
   { value: 'hard', label: '困难' }
 ]
 
-const categoryLabelMap = Object.fromEntries(categoryOptions.map(o => [o.value, o.label]))
+const categoryLabelMap = categoryMap
 const difficultyLabelMap = Object.fromEntries(difficultyOptions.map(o => [o.value, o.label]))
 
 const filters = reactive({

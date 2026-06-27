@@ -21,6 +21,7 @@ public final class PositionConstants {
         CODE_TO_SHORT_NAME.put("frontend", "前端开发");
         CODE_TO_SHORT_NAME.put("fullstack", "全栈开发");
         CODE_TO_SHORT_NAME.put("algorithm", "算法工程师");
+        CODE_TO_SHORT_NAME.put("hr", "HR/软素质");
     }
 
     /** 英文 code → 中文全称（用于 AI prompt 等需要完整表述的场景） */
@@ -30,6 +31,7 @@ public final class PositionConstants {
         CODE_TO_FULL_NAME.put("frontend", "前端开发");
         CODE_TO_FULL_NAME.put("fullstack", "全栈开发");
         CODE_TO_FULL_NAME.put("algorithm", "算法工程师");
+        CODE_TO_FULL_NAME.put("hr", "HR/软素质");
     }
 
     /** 旧版中文岗位名 → 英文 code（兼容历史数据） */

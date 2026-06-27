@@ -47,13 +47,12 @@ public class QuestionService {
         return data;
     }
 
-    @Cacheable(cacheNames = "questions", key = "'detail:' + #id")
     public Question getQuestionById(Long id) {
+        questionMapper.incrementViewCount(id);
         Question question = questionMapper.findById(id);
         if (question == null) {
             throw new BusinessException(404, "题目不存在");
         }
-        questionMapper.incrementViewCount(id);
         return question;
     }
 

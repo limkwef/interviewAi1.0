@@ -22,6 +22,25 @@
                     select="findCommentsByReportId" column="id"/>
     </resultMap>
 
+    <!-- 不带 comments 的 resultMap，用于列表查询避免 N+1 -->
+    <resultMap id="reportListResultMap" type="org.backend.entity.InterviewReport">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="level" column="level"/>
+        <result property="technicalScore" column="technical_score"/>
+        <result property="expressionScore" column="expression_score"/>
+        <result property="logicScore" column="logic_score"/>
+        <result property="completenessScore" column="completeness_score"/>
+        <result property="innovationScore" column="innovation_score"/>
+        <result property="suggestion" column="suggestion"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="position" column="position"/>
+        <result property="round" column="round"/>
+        <result property="difficulty" column="difficulty"/>
+    </resultMap>
+
     <select id="findCommentsByReportId" resultType="org.backend.entity.ReportComment">
         SELECT id, report_id, question_text, user_answer, score, comment, sort_order
         FROM report_comment
@@ -46,9 +65,10 @@
         SELECT id, session_id, user_id, total_score, level, technical_score, expression_score,
                logic_score, completeness_score, innovation_score, suggestion, created_at
         FROM interview_report WHERE session_id = #{sessionId}
+        ORDER BY id DESC LIMIT 1
     </select>
 
-    <select id="findByUserId" resultMap="reportResultMap">
+    <select id="findByUserId" resultMap="reportListResultMap">
         SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
                r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
                r.suggestion, r.created_at,
@@ -125,7 +145,7 @@
     </select>
 
     <!-- 按条件过滤的报告列表（支持 position/round/difficulty/score/date） -->
-    <select id="findByUserIdFiltered" resultMap="reportResultMap">
+    <select id="findByUserIdFiltered" resultMap="reportListResultMap">
         SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
                r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
                r.suggestion, r.created_at,
@@ -255,7 +275,7 @@
     </select>
 
     <!-- 按岗位过滤的报告列表 -->
-    <select id="findByUserIdAndPosition" resultMap="reportResultMap">
+    <select id="findByUserIdAndPosition" resultMap="reportListResultMap">
         SELECT r.id, r.session_id, r.user_id, r.total_score, r.level, r.technical_score,
                r.expression_score, r.logic_score, r.completeness_score, r.innovation_score,
                r.suggestion, r.created_at,

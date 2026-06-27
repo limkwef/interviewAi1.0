@@ -8,8 +8,10 @@
         </div>
         <div class="header-center" v-if="session">
           <div class="progress-info">
-            <span class="progress-text">第 <strong>{{ session.currentQuestion }}</strong> / {{ session.questionCount }} 题</span>
+            <span class="progress-text">第 <strong>{{ Math.min(session.currentQuestion + 1, session.questionCount) }}</strong> / {{ session.questionCount }} 题</span>
             <span class="progress-tag" :class="`progress-tag--${getTagType()}`">{{ tagLabel }}</span>
+            <span class="follow-up-tag" v-if="session.maxFollowUp > 0">每题最多追问 {{ session.maxFollowUp }} 次</span>
+            <span class="follow-up-tag follow-up-tag--disabled" v-else>不追问</span>
           </div>
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
@@ -36,6 +38,18 @@
         <button class="end-btn" @click="handleEndInterview" :disabled="ending">
           {{ ending ? '结束中...' : '结束面试' }}
         </button>
+        <button class="mute-btn" @click="ttsMuted = !ttsMuted" :title="ttsMuted ? '开启语音' : '静音'">
+          <svg v-if="!ttsMuted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        </button>
       </div>
       <div class="messages-container" ref="messageContainer">
         <div v-for="msg in messages" :key="msg.id" :class="['message-item', msg.role]">
@@ -46,9 +60,13 @@
             <div v-if="msg.role === 'ai'" class="message-text markdown-body" v-html="renderMarkdown(msg.content)"></div>
             <div v-else class="message-text" v-html="formatMessage(msg.content)"></div>
             <TtsPlayer
-              v-if="msg.role === 'ai' && msg.content"
+              v-if="msg.role === 'ai' && msg.content && !ttsMuted"
               :text="msg.content"
               :autoPlay="autoPlayTts && msg.id === lastAiMessageId"
+              :muted="ttsMuted"
+              :activeId="activeTtsId"
+              :messageId="msg.id"
+              @tts-started="activeTtsId = msg.id"
             />
             <div class="message-time" v-if="msg.createdAt">{{ formatTime(msg.createdAt) }}</div>
           </div>
@@ -75,18 +93,19 @@
       <div class="input-area">
         <VoiceRecorder
           @result="handleVoiceResult"
-          :disabled="sending"
+          :disabled="sending || isInterviewEnded"
           class="voice-btn-wrapper"
         />
         <textarea
+          ref="textareaRef"
           v-model="inputMessage"
           class="message-input"
           :placeholder="inputPlaceholder"
-          @keydown.ctrl.enter="handleSend"
+          @keydown="handleKeydown"
           :disabled="sending"
-          rows="3"
+          rows="1"
         ></textarea>
-        <button class="send-btn" @click="handleSend" :disabled="!inputMessage.trim() || sending">
+        <button class="send-btn" @click="handleSend" :disabled="!inputMessage.trim() || sending || isInterviewEnded">
           {{ sending ? '生成中' : '发送' }}
         </button>
       </div>
@@ -95,9 +114,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, onDeactivated } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
-import { getSessionMessages, getSessionInfo, sendMessage, sendMessageStream, endInterview, abandonInterview, pollStreamStatus } from '@/api/interview'
+import { getSessionMessages, getSessionInfo, sendMessage, sendMessageStream, endInterview, abandonInterview, pollStreamStatus, getReportStatus } from '@/api/interview'
 import { submitReportDurations } from '@/api/interview'
 import { useInterviewStore } from '@/stores/interview'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -107,11 +126,12 @@ import VoiceRecorder from './components/VoiceRecorder.vue'
 import TtsPlayer from './components/TtsPlayer.vue'
 
 const interviewStore = useInterviewStore()
-const setInterviewState = interviewStore.setInterviewState
+const { setInterviewState, cacheInterviewState, getCachedState, clearInterviewCache } = interviewStore
 const router = useRouter()
 const route = useRoute()
-const sessionId = route.params.id
+const sessionId = computed(() => route.params.id)
 const messageContainer = ref(null)
+const textareaRef = ref(null)
 const inputMessage = ref('')
 const sending = ref(false)
 const ending = ref(false)
@@ -124,6 +144,9 @@ const retryContent = ref('')          // 待重试的消息内容
 const sendingRetry = ref(false)       // 正在重试中
 const autoPlayTts = ref(true)         // 自动播放 TTS
 const lastAiMessageId = ref(null)     // 最后一条 AI 消息 ID
+const ttsMuted = ref(false)           // 全局静音状态
+const activeTtsId = ref(null)         // 当前正在播放 TTS 的消息 ID
+const lastKeyWasEnter = ref(false)    // 上一次按键是否为 Enter
 const pollingTimer = ref(null)        // 轮询降级定时器
 
 // ======================== 计时器逻辑 ========================
@@ -138,7 +161,13 @@ const totalPauseDuration = ref(0)
 
 
 
+const isInterviewEnded = computed(() => {
+  if (!session.value) return false
+  return lastMessageType.value === 'end' || session.value.currentQuestion >= session.value.questionCount
+})
+
 const tagLabel = computed(() => {
+  if (isInterviewEnded.value) return '面试已结束'
   if (!lastMessageType.value) return '答题中'
   if (lastMessageType.value === 'follow_up') return '追问中'
   if (lastMessageType.value === 'next_question') return '答题中'
@@ -152,6 +181,7 @@ const progressPercent = computed(() => {
 })
 
 const inputPlaceholder = computed(() => {
+  if (isInterviewEnded.value) return '面试已结束，无法发送消息'
   if (lastMessageType.value === 'follow_up') return '回答面试官的追问... (Ctrl+Enter 发送)'
   return '输入你的回答... (Ctrl+Enter 发送)'
 })
@@ -235,18 +265,88 @@ function handleVisibilityChange() {
 onMounted(async () => {
   setInterviewState(true)
   window.addEventListener('beforeunload', handleBeforeUnload)
-  await Promise.all([loadMessages(), loadSessionInfo()])
-  startTimers()
+
+  // 尝试从缓存恢复（页面刷新场景）
+  const cached = getCachedState(sessionId.value)
+  if (cached) {
+    session.value = cached.session
+    messages.value = cached.messages
+    updateLastMessageType()
+    // 恢复计时
+    if (cached.session?.createdAt) {
+      const serverStart = new Date(cached.session.createdAt).getTime()
+      const elapsed = Math.floor((Date.now() - serverStart) / 1000)
+      totalElapsed.value = Math.max(0, elapsed)
+      startTimestamp.value = Date.now() - elapsed * 1000
+    }
+    startTimers()
+    await nextTick()
+    scrollToBottom()
+    // 后台静默刷新数据（确保最新）
+    Promise.all([loadMessages(), loadSessionInfo()])
+  } else {
+    // 缓存未命中，从 API 加载
+    await Promise.all([loadMessages(), loadSessionInfo()])
+    startTimers()
+  }
+
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
+// textarea 自适应高度
+watch(inputMessage, () => {
+  nextTick(() => {
+    const el = textareaRef.value
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  })
+})
+
+// keep-alive 下切换面试时重置状态并重新加载
+watch(sessionId, async (newId, oldId) => {
+  if (newId && newId !== oldId && route.name === 'InterviewSession') {
+    // 重置所有状态
+    messages.value = []
+    session.value = null
+    inputMessage.value = ''
+    sending.value = false
+    ending.value = false
+    streamingContent.value = ''
+    interviewEnded.value = false
+    lastMessageType.value = ''
+    retryContent.value = ''
+    sendingRetry.value = false
+    lastAiMessageId.value = null
+    activeTtsId.value = null
+    totalElapsed.value = 0
+    currentQuestionElapsed.value = 0
+    questionDurations.value = {}
+    stopTimers()
+    stopPolling()
+    // 重新加载
+    await Promise.all([loadMessages(), loadSessionInfo()])
+    startTimers()
+  }
+})
+
 onBeforeUnmount(() => {
+  isUnmounted.value = true
   stopTimers()
   stopPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   setInterviewState(false)
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
+
+// keep-alive 下离开面试页时停止轮询和计时
+onDeactivated(() => {
+  stopTimers()
+  stopPolling()
+})
+
+// 组件是否已卸载的标记
+const isUnmounted = ref(false)
 
 onBeforeRouteLeave((to, from, next) => {
   if (interviewEnded.value) {
@@ -265,22 +365,21 @@ onBeforeRouteLeave((to, from, next) => {
       cancelButtonText: '继续面试',
       type: 'warning'
     }
-  ).then(() => {
-    const action = hasUserAnswer ? endInterview(sessionId) : abandonInterview(sessionId)
-    action.then((res) => {
-      interviewEnded.value = true
-      setInterviewState(false)
-      // 如果是结束面试，跳转到报告页面
-      if (hasUserAnswer && res?.code === 200 && res?.data?.reportId) {
-        next({ path: `/report/detail/${res.data.reportId}`, replace: true })
+  ).then(async () => {
+    try {
+      if (hasUserAnswer) {
+        await endInterview(sessionId.value)
       } else {
-        next()
+        await abandonInterview(sessionId.value)
       }
-    }).catch(() => {
-      interviewEnded.value = true
-      setInterviewState(false)
-      next()
-    })
+    } catch (e) {
+      console.warn('结束面试失败', e)
+    }
+    interviewEnded.value = true
+    setInterviewState(false)
+    clearInterviewCache()
+    stopTimers()
+    next({ path: '/interview/config', replace: true })
   }).catch(() => {
     next(false)
   })
@@ -295,10 +394,12 @@ function handleBeforeUnload(e) {
 
 async function loadMessages() {
   try {
-    const res = await getSessionMessages(sessionId)
+    const res = await getSessionMessages(sessionId.value)
     if (res.code === 200) {
       messages.value = res.data || []
       updateLastMessageType()
+      // 更新缓存
+      cacheInterviewState(sessionId.value, session.value, messages.value)
       await nextTick()
       scrollToBottom()
     }
@@ -309,9 +410,11 @@ async function loadMessages() {
 
 async function loadSessionInfo() {
   try {
-    const res = await getSessionInfo(sessionId)
+    const res = await getSessionInfo(sessionId.value)
     if (res.code === 200) {
       session.value = res.data
+      // 更新缓存
+      cacheInterviewState(sessionId.value, session.value, messages.value)
       // 如果面试已进行了一段时间，从服务端时间算起
       if (res.data?.createdAt) {
         const serverStart = new Date(res.data.createdAt).getTime()
@@ -336,9 +439,41 @@ async function handleSend() {
   await doSend(inputMessage.value)
 }
 
+function handleKeydown(e) {
+  // Ctrl+Enter 直接发送
+  if (e.key === 'Enter' && e.ctrlKey) {
+    e.preventDefault()
+    handleSend()
+    return
+  }
+
+  // 普通 Enter
+  if (e.key === 'Enter' && !e.shiftKey) {
+    // 连续两次回车且有内容 → 发送
+    if (lastKeyWasEnter.value && inputMessage.value.trim()) {
+      e.preventDefault()
+      // 去掉末尾的换行符
+      inputMessage.value = inputMessage.value.replace(/\n+$/, '')
+      handleSend()
+      lastKeyWasEnter.value = false
+      return
+    }
+    lastKeyWasEnter.value = true
+    return
+  }
+
+  // 其他按键重置标记
+  lastKeyWasEnter.value = false
+}
+
 async function doSend(content, isRetry = false) {
   if (!content || !content.trim()) return
   if (sending.value && !isRetry) return
+  // 面试已结束，禁止发送
+  if (isInterviewEnded.value) {
+    ElMessage.warning('面试已结束，无法发送消息')
+    return
+  }
 
   if (!isRetry) {
     inputMessage.value = ''
@@ -359,9 +494,11 @@ async function doSend(content, isRetry = false) {
 
   // 先尝试流式 SSE
   let success = false
+  let requestSent = false  // 标记请求是否已到达后端，防止重复生成 AI 回复
   try {
+    requestSent = true
     const meta = await sendMessageStream(
-      sessionId,
+      sessionId.value,
       content,
       (chunk) => {
         streamingContent.value += chunk
@@ -372,7 +509,7 @@ async function doSend(content, isRetry = false) {
     messages.value.push({
       id: meta.messageId || Date.now(),
       role: 'ai',
-      content: streamingContent.value,
+      content: meta.content || streamingContent.value,
       messageType: meta.type || 'next_question',
       createdAt: new Date().toISOString()
     })
@@ -388,26 +525,22 @@ async function doSend(content, isRetry = false) {
     if (session.value && meta.nextQuestion) {
       session.value.currentQuestion = meta.nextQuestion
     }
+    // 面试结束时停止计时器（type=end 或所有题目已答完）
+    if (meta.type === 'end' || (session.value && session.value.currentQuestion >= session.value.questionCount)) {
+      stopTimers()
+    }
     success = true
     await nextTick()
     scrollToBottom()
   } catch {
-    // SSE 断开 → 自动降级为轮询
-    if (streamingContent.value) {
-      // SSE 已有部分内容，启动轮询继续获取剩余部分
-      success = await startPollingFallback(content)
-    }
-  }
-
-  // SSE 完全没收到内容 → 降级到轮询
-  if (!success) {
+    // SSE 断开 → 自动降级为轮询（不重发 POST，避免后端重复生成 AI 回复）
     success = await startPollingFallback(content)
   }
 
-  // 轮询也失败 → 最终降级到普通 POST
-  if (!success) {
+  // 轮询也失败 → 只有在请求未到达后端时才降级到普通 POST
+  if (!success && !requestSent) {
     try {
-      const res = await sendMessage(sessionId, content)
+      const res = await sendMessage(sessionId.value, content)
       if (res.code === 200) {
         messages.value.push({
           id: res.data.id,
@@ -419,6 +552,10 @@ async function doSend(content, isRetry = false) {
         lastMessageType.value = res.data.type || ''
         if (session.value && res.data.nextQuestion) {
           session.value.currentQuestion = res.data.nextQuestion
+        }
+        // 面试结束时停止计时器
+        if (res.data.type === 'end' || (session.value && session.value.currentQuestion >= session.value.questionCount)) {
+          stopTimers()
         }
         success = true
         await nextTick()
@@ -452,6 +589,13 @@ async function startPollingFallback(content) {
 
   return new Promise((resolve) => {
     pollingTimer.value = setInterval(async () => {
+      // 组件已卸载，停止轮询
+      if (isUnmounted.value) {
+        stopPolling()
+        resolve(false)
+        return
+      }
+
       pollCount++
       if (pollCount > MAX_POLL_COUNT) {
         stopPolling()
@@ -459,8 +603,16 @@ async function startPollingFallback(content) {
         return
       }
 
+      // sessionId 可能已变为 undefined（组件卸载后）
+      const currentSessionId = sessionId.value
+      if (!currentSessionId) {
+        stopPolling()
+        resolve(false)
+        return
+      }
+
       try {
-        const res = await pollStreamStatus(sessionId)
+        const res = await pollStreamStatus(currentSessionId)
         if (res.code !== 200) {
           stopPolling()
           resolve(false)
@@ -479,7 +631,9 @@ async function startPollingFallback(content) {
             lastContent = data.content
             streamingContent.value = data.content
             await nextTick()
-            scrollToBottom()
+            if (!isUnmounted.value) {
+              scrollToBottom()
+            }
           }
           return
         }
@@ -502,11 +656,17 @@ async function startPollingFallback(content) {
           if (data.type === 'next_question') {
             recordQuestionDuration()
           }
+          // 面试结束时停止计时器
+          if (data.type === 'end') {
+            stopTimers()
+          }
           if (session.value && data.nextQuestion) {
             session.value.currentQuestion = data.nextQuestion
           }
           await nextTick()
-          scrollToBottom()
+          if (!isUnmounted.value) {
+            scrollToBottom()
+          }
           resolve(true)
         }
       } catch {
@@ -541,16 +701,27 @@ function handleVoiceResult(result) {
 async function handleEndInterview() {
   ending.value = true
   try {
-    const res = await endInterview(sessionId)
+    const res = await endInterview(sessionId.value)
     if (res.code === 200) {
       interviewEnded.value = true
       stopTimers()
       setInterviewState(false)
-      if (res.data?.reportId) {
-        submitDurations(res.data.reportId)  // fire-and-forget
+      clearInterviewCache()
+      // 异步评估，轮询等待报告生成
+      const reportId = await waitForReport(sessionId.value)
+      if (reportId === 'evaluate_failed') {
+        ElMessage.warning('AI 评估失败，请稍后在面试历史中重新评估')
+        router.replace('/interview')
+      } else if (reportId === 'no_report') {
+        ElMessage.info('本次面试无有效回答，未生成报告')
+        router.replace('/interview')
+      } else if (reportId) {
+        submitDurations(reportId)
+        router.replace(`/report/detail/${reportId}`)
+      } else {
+        ElMessage.warning('报告生成超时，请稍后在面试历史中查看')
+        router.replace('/interview')
       }
-      // 使用 replace 而非 push，防止返回按钮回到已结束的面试页面
-      router.replace(`/report/detail/${res.data.reportId}`)
     } else {
       ElMessage.error(res.message || '结束面试失败')
     }
@@ -559,6 +730,34 @@ async function handleEndInterview() {
   } finally {
     ending.value = false
   }
+}
+
+/**
+ * 轮询等待报告生成完成（最多等 2 分钟）
+ */
+async function waitForReport(sessionId) {
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      const res = await getReportStatus(sessionId)
+      if (res.code === 200 && res.data) {
+        if (res.data.status === 'completed' && res.data.reportId) {
+          return res.data.reportId
+        }
+        if (res.data.status === 'completed' && !res.data.reportId) {
+          // 面试已完成但没有报告（无有效回答的情况）
+          return 'no_report'
+        }
+        if (res.data.status === 'evaluate_failed') {
+          return 'evaluate_failed'
+        }
+        // evaluating 状态继续等待
+      }
+    } catch (e) {
+      console.warn('轮询报告状态失败', e)
+    }
+  }
+  return null
 }
 
 function scrollToBottom() {
@@ -677,6 +876,20 @@ function formatTime(dateStr) {
   }
 }
 
+.follow-up-tag {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  background: #E0F2FE;
+  color: #0284C7;
+
+  &--disabled {
+    background: #F3F4F6;
+    color: #6B7280;
+  }
+}
+
 .progress-bar {
   height: 4px;
   background: $border-color;
@@ -724,6 +937,26 @@ function formatTime(dateStr) {
   white-space: nowrap;
   font-weight: 500;
   flex-shrink: 0;
+}
+
+.mute-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid $border-color;
+  border-radius: 6px;
+  background: #fff;
+  color: #52525B;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all $transition-fast;
+
+  &:hover {
+    color: $accent-color;
+    border-color: $accent-color;
+  }
 }
 
 .messages-container {
@@ -919,7 +1152,10 @@ function formatTime(dateStr) {
   color: $text-primary;
   resize: none;
   font-family: inherit;
-  transition: border-color $transition-fast;
+  transition: border-color $transition-fast, height 0.2s ease;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.5;
 
   &:focus { outline: none; border-color: $accent-color; }
   &::placeholder { color: $text-tertiary; }

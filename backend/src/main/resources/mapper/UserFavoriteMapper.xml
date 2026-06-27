@@ -11,8 +11,6 @@
         <result property="viewCount" column="view_count"/>
         <result property="favoriteCount" column="favorite_count"/>
         <result property="createdAt" column="created_at"/>
-        <collection property="tags" ofType="org.backend.entity.Tag"
-                    select="org.backend.mapper.QuestionMapper.findTagsByQuestionId" column="id"/>
     </resultMap>
 
     <select id="findFavoriteQuestions" resultMap="questionFromFavorite">
@@ -43,4 +41,12 @@
             AND q.difficulty = #{difficulty}
         </if>
     </select>
+
+    <delete id="batchDelete">
+        DELETE FROM user_favorite
+        WHERE user_id = #{userId} AND question_id IN
+        <foreach collection="questionIds" item="qid" open="(" separator="," close=")">
+            #{qid}
+        </foreach>
+    </delete>
 </mapper>

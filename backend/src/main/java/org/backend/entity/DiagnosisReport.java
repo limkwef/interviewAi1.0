@@ -17,6 +17,8 @@ public class DiagnosisReport {
     private Integer previousScore;    // 上次分数
 
     // JSON 字段（MyBatis 中用 String 存储，Service 层做 JSON 序列化/反序列化）
+    // 注意：不使用 @JsonRawValue，因为与 Redis 缓存(GenericJackson2JsonRedisSerializer)冲突。
+    // 前端 computed 属性已兼容 String 格式（通过 JSON.parse 解析），去掉注解后前端依然正常。
     private String knowledgeAnalysis;  // 知识维度分析
     private String thinkingAnalysis;   // 思维模式分析
     private String mistakePatterns;    // 错误模式

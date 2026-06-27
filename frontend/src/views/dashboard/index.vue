@@ -116,7 +116,7 @@
           </div>
           <div class="recommend-list">
             <div v-for="(item, index) in recommendQuestions" :key="index" class="recommend-item"
-                 @click="$router.push(`/questions/detail/${item.id}`)">
+                 @click="item.questionId && $router.push(`/questions/detail/${item.questionId}`)">
               <div class="recommend-index">{{ index + 1 }}</div>
               <div class="recommend-info">
                 <span class="recommend-title">{{ item.title }}</span>
@@ -124,12 +124,14 @@
                   <el-tag size="small" :type="getDifficultyType(item.difficulty)">
                     {{ getDifficultyLabel(item.difficulty) }}
                   </el-tag>
-                  <span class="recommend-category">{{ item.category }}</span>
+                  <span class="recommend-category">{{ item.tag || item.category }}</span>
                 </div>
               </div>
             </div>
             <div v-if="recommendQuestions.length === 0" class="empty-recommend">
-              <p>暂无推荐题目</p>
+              <p>还没有面试记录，先去参加一场面试吧</p>
+              <el-button type="primary" size="small" style="margin-top: 8px;"
+                         @click="$router.push('/interview/config')">开始面试</el-button>
             </div>
           </div>
         </div>

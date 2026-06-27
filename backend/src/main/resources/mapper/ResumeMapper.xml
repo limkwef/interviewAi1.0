@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.ResumeMapper">
+
+    <resultMap id="resumeResultMap" type="org.backend.entity.Resume">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="version" column="version"/>
+        <result property="source" column="source"/>
+        <result property="status" column="status"/>
+        <result property="errorMsg" column="error_msg"/>
+        <result property="rawText" column="raw_text"/>
+        <result property="parsedData" column="parsed_data"/>
+        <result property="fileName" column="file_name"/>
+        <result property="fileUrl" column="file_url"/>
+        <result property="fileSize" column="file_size"/>
+        <result property="isActive" column="is_active"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.Resume" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO resume (user_id, version, source, status, error_msg, raw_text, parsed_data,
+                            file_name, file_url, file_size, is_active)
+        VALUES (#{userId}, #{version}, #{source}, #{status}, #{errorMsg}, #{rawText}, #{parsedData},
+                #{fileName}, #{fileUrl}, #{fileSize}, #{isActive})
+    </insert>
+
+    <select id="findById" resultMap="resumeResultMap">
+        SELECT id, user_id, version, source, status, error_msg, raw_text, parsed_data,
+               file_name, file_url, file_size, is_active, create_time, update_time
+        FROM resume WHERE id = #{id}
+    </select>
+
+    <select id="findByUserId" resultMap="resumeResultMap">
+        SELECT id, user_id, version, source, status, error_msg,
+               file_name, file_url, file_size, is_active, create_time, update_time
+        FROM resume WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM resume WHERE user_id = #{userId}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE resume SET status = #{status}, error_msg = #{errorMsg} WHERE id = #{id}
+    </update>
+
+    <update id="updateParsedData">
+        UPDATE resume SET parsed_data = #{parsedData}, status = 1, error_msg = NULL WHERE id = #{id}
+    </update>
+
+    <update id="updateRawText">
+        UPDATE resume SET raw_text = #{rawText} WHERE id = #{id}
+    </update>
+
+    <update id="deactivateAll">
+        UPDATE resume SET is_active = 0 WHERE user_id = #{userId} AND is_active = 1
+    </update>
+
+    <update id="activateById">
+        UPDATE resume SET is_active = 1 WHERE id = #{id}
+    </update>
+
+    <update id="deactivateById">
+        UPDATE resume SET is_active = 0 WHERE id = #{id}
+    </update>
+
+    <select id="findActiveByUserId" resultMap="resumeResultMap">
+        SELECT id, user_id, version, source, status, error_msg, raw_text, parsed_data,
+               file_name, file_url, file_size, is_active, create_time, update_time
+        FROM resume WHERE user_id = #{userId} AND is_active = 1
+        LIMIT 1
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM resume WHERE id = #{id}
+    </delete>
+
+    <select id="countByUserIdAndSource" resultType="int">
+        SELECT COUNT(*) FROM resume WHERE user_id = #{userId} AND source = #{source}
+    </select>
+
+</mapper>

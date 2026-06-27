@@ -138,7 +138,7 @@
             </h3>
           </div>
           <div class="resource-list">
-            <div v-for="(resource, index) in pathData.resources" :key="index" class="resource-item">
+            <div v-for="(resource, index) in pathData.resources" :key="index" class="resource-item" @click="openResource(resource)">
               <div class="resource-icon">
                 <el-icon v-if="resource.type === '书籍'"><Reading /></el-icon>
                 <el-icon v-else-if="resource.type === '课程'"><Monitor /></el-icon>
@@ -146,9 +146,10 @@
               </div>
               <div class="resource-info">
                 <span class="resource-type">{{ resource.type || '资源' }}</span>
-                <span class="resource-name">{{ resource.name || resource.title }}</span>
+                <span class="resource-name">{{ resource.title || resource.name }}</span>
                 <span class="resource-desc" v-if="resource.description">{{ resource.description }}</span>
               </div>
+              <el-icon class="resource-arrow"><Right /></el-icon>
             </div>
           </div>
         </div>
@@ -161,7 +162,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { TrendCharts, Refresh, Aim, VideoPlay, Collection, Reading, Monitor, Link } from '@element-plus/icons-vue'
+import { TrendCharts, Refresh, Aim, VideoPlay, Collection, Reading, Monitor, Link, Right } from '@element-plus/icons-vue'
 import { getLearningPath, refreshLearningPath, markTaskComplete, unmarkTaskComplete } from '@/api/learningPath'
 
 const router = useRouter()
@@ -219,6 +220,15 @@ async function handleRefresh() {
     ElMessage.error('刷新失败，请稍后重试')
   } finally {
     refreshing.value = false
+  }
+}
+
+function openResource(resource) {
+  if (resource.url) {
+    window.open(resource.url, '_blank')
+  } else {
+    const keyword = encodeURIComponent(`${resource.title || resource.name} ${resource.type || ''}`)
+    window.open(`https://www.bing.com/search?q=${keyword}`, '_blank')
   }
 }
 
@@ -590,6 +600,13 @@ function formatTime(time) {
   padding: 12px;
   background: #F9FAFB;
   border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #F3F0FF;
+    transform: translateX(4px);
+  }
 }
 
 .resource-icon {
@@ -626,6 +643,20 @@ function formatTime(time) {
 .resource-desc {
   font-size: 13px;
   color: #6B7280;
+}
+
+.resource-arrow {
+  margin-left: auto;
+  color: #9CA3AF;
+  font-size: 14px;
+  flex-shrink: 0;
+  align-self: center;
+  transition: transform 0.2s ease;
+
+  .resource-item:hover & {
+    color: #7C3AED;
+    transform: translateX(4px);
+  }
 }
 
 @media (max-width: 768px) {

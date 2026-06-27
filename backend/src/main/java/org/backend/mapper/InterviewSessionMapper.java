@@ -13,6 +13,7 @@ public interface InterviewSessionMapper {
     int updateStatus(@Param("id") Long id, @Param("status") String status);
     int updateCurrentQuestion(@Param("id") Long id, @Param("currentQuestion") int currentQuestion);
     int updateQuestionIds(@Param("id") Long id, @Param("questionIds") String questionIds);
+    int updateEvaluateStatus(InterviewSession session);
     InterviewSession findById(Long id);
     List<InterviewSession> findByUserId(Map<String, Object> params);
     int countByUserId(Map<String, Object> params);

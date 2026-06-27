@@ -14,6 +14,7 @@ public class SessionInfoVO {
     private String round;
     private String difficulty;
     private Integer questionCount;
+    private Integer maxFollowUp;
     private Integer currentQuestion;
     private String status;
     private LocalDateTime createdAt;

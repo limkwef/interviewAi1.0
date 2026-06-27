@@ -17,8 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class LearningPathService {
+
+    private static final Logger logger = LoggerFactory.getLogger(LearningPathService.class);
 
     @Autowired
     private LearningTaskMapper learningTaskMapper;
@@ -118,7 +123,7 @@ public class LearningPathService {
                     }
                 }
             } catch (Exception e) {
-                // 解析失败，返回空资源列表
+                logger.warn("解析学习计划资源失败，用户{}", userId, e);
             }
         }
 
@@ -193,8 +198,60 @@ public class LearningPathService {
      */
     @Transactional
     public LearningPathVO refreshFromDiagnosis(Long userId) {
-        // 只删除已勾选（已完成）的任务，未完成的保留
-        learningTaskMapper.deleteByUserIdAndCompleted(userId, 1);
+        // 1. 获取最新诊断报告
+        DiagnosisReport latest = diagnosisReportMapper.findLatestByUserId(userId);
+        if (latest == null || latest.getLearningPlan() == null) {
+            // 没有诊断报告时只清理已完成任务
+            learningTaskMapper.deleteByUserIdAndCompleted(userId, 1);
+            return getLearningPath(userId);
+        }
+
+        // 2. 解析 learningPlan JSON
+        try {
+            Map<String, Object> plan = objectMapper.readValue(latest.getLearningPlan(),
+                    new TypeReference<Map<String, Object>>() {});
+            List<Map<String, Object>> phases = (List<Map<String, Object>>) plan.get("phases");
+            if (phases == null || phases.isEmpty()) {
+                return getLearningPath(userId);
+            }
+
+            // 3. 删除旧的已完成任务，保留未完成的
+            learningTaskMapper.deleteByUserIdAndCompleted(userId, 1);
+
+            // 4. 插入新任务（跳过已有 phaseIndex + taskIndex 的）
+            List<LearningTask> newTasks = new ArrayList<>();
+            for (int pi = 0; pi < phases.size(); pi++) {
+                Map<String, Object> phase = phases.get(pi);
+                String phaseName = (String) phase.get("phase");
+                String focus = (String) phase.get("focus");
+                List<String> tasks = (List<String>) phase.get("tasks");
+
+                if (tasks == null) continue;
+                for (int ti = 0; ti < tasks.size(); ti++) {
+                    // 检查是否已存在（未完成的需保留）
+                    LearningTask existing = learningTaskMapper.findByUserPhaseTask(userId, pi, ti);
+                    if (existing != null) continue;
+
+                    LearningTask task = new LearningTask();
+                    task.setUserId(userId);
+                    task.setPhaseIndex(pi);
+                    task.setTaskIndex(ti);
+                    task.setPhaseName(phaseName);
+                    task.setTaskText(tasks.get(ti));
+                    task.setFocusArea(focus);
+                    task.setCompleted(0);
+                    newTasks.add(task);
+                }
+            }
+
+            if (!newTasks.isEmpty()) {
+                learningTaskMapper.insertBatch(newTasks);
+                logger.info("从诊断报告刷新学习计划，用户{}新增{}条任务", userId, newTasks.size());
+            }
+        } catch (Exception e) {
+            logger.error("解析学习计划JSON失败，用户{}", userId, e);
+        }
+
         return getLearningPath(userId);
     }
 

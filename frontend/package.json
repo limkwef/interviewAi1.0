@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:register": "playwright test tests/register --output=test-results/register",
+    "test:login": "playwright test tests/login --output=test-results/login",
+    "test:report": "playwright show-report"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.0",
@@ -19,10 +23,13 @@
     "pinia": "^2.1.0",
     "vue": "^3.4.0",
     "vue-echarts": "^7.0.0",
-    "vue-router": "^4.3.0"
+    "vue-router": "^4.3.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-vue": "^5.0.0",
+    "playwright": "^1.60.0",
     "sass": "^1.77.0",
     "unplugin-auto-import": "^0.18.0",
     "unplugin-vue-components": "^0.27.0",

@@ -43,21 +43,41 @@ public class ScoringEngine {
 
         // 1. 正则匹配：各种括号 + 可选空格 + 决策关键词
         Pattern p = Pattern.compile(
-            "[\\[【（(]\\s*决策\\s*[:：]\\s*(follow_up|next|end)\\s*[\\]】）)]",
+            "[\\[【（(]\\s*决策\\s*[:：]\\s*(follow_up|next|end|answer)\\s*[\\]】）)]",
             Pattern.CASE_INSENSITIVE);
         Matcher m = p.matcher(response);
         if (m.find()) {
             return switch (m.group(1).toLowerCase()) {
                 case "follow_up" -> "follow_up";
                 case "end" -> "end";
+                case "answer" -> "answer";
                 default -> "next_question";
             };
         }
 
         // 2. 兼容 JSON 格式
-        Pattern jp = Pattern.compile("\"decision\"\\s*:\\s*\"(follow_up|next|end)\"", Pattern.CASE_INSENSITIVE);
+        Pattern jp = Pattern.compile("\"decision\"\\s*:\\s*\"(follow_up|next|end|answer)\"", Pattern.CASE_INSENSITIVE);
         Matcher jm = jp.matcher(response);
-        if (jm.find()) return jm.group(1).toLowerCase();
+        if (jm.find()) {
+            return switch (jm.group(1).toLowerCase()) {
+                case "follow_up" -> "follow_up";
+                case "end" -> "end";
+                case "answer" -> "answer";
+                default -> "next_question";
+            };
+        }
+
+        // 3. 兼容 type=xxx 格式
+        Pattern tp = Pattern.compile("type\\s*=\\s*(follow_up|next|end|answer)", Pattern.CASE_INSENSITIVE);
+        Matcher tm = tp.matcher(response);
+        if (tm.find()) {
+            return switch (tm.group(1).toLowerCase()) {
+                case "follow_up" -> "follow_up";
+                case "end" -> "end";
+                case "answer" -> "answer";
+                default -> "next_question";
+            };
+        }
 
         // 3. 关键词降级（只看最后 200 字，避免误判）
         String tail = response.length() > 200 ? response.substring(response.length() - 200) : response;
@@ -159,6 +179,9 @@ public class ScoringEngine {
         if ("hr".equals(round)) {
             // HR面试权重：表达30% + 团队协作25% + 学习能力20% + 职业规划15% + 责任感10%
             formulaTotal = (int) Math.round(expr * 0.3 + logic * 0.25 + comp * 0.2 + inno * 0.15 + tech * 0.1);
+        } else if ("comprehensive".equals(round)) {
+            // 综合面试权重：技术25% + 表达25% + 逻辑22% + 完整性15% + 创新性13%
+            formulaTotal = (int) Math.round(tech * 0.25 + expr * 0.25 + logic * 0.22 + comp * 0.15 + inno * 0.13);
         } else {
             // 技术面试权重：技术40% + 表达20% + 逻辑20% + 完整性10% + 创新性10%
             formulaTotal = (int) Math.round(tech * 0.4 + expr * 0.2 + logic * 0.2 + comp * 0.1 + inno * 0.1);
@@ -299,6 +322,13 @@ public class ScoringEngine {
             logicBase = (int) Math.round(totalScore * 1.0);  // 团队协作
             compBase = (int) Math.round(totalScore * 0.95);  // 学习能力
             innoBase = (int) Math.round(totalScore * 0.9);   // 职业规划
+        } else if ("comprehensive".equals(round)) {
+            // 综合面试权重：技术25% + 表达25% + 逻辑22% + 完整性15% + 创新性13%
+            techBase = (int) Math.round(totalScore * 1.0);
+            exprBase = (int) Math.round(totalScore * 1.0);
+            logicBase = (int) Math.round(totalScore * 0.95);
+            compBase = (int) Math.round(totalScore * 0.9);
+            innoBase = (int) Math.round(totalScore * 0.85);
         } else {
             // 技术面试权重：技术40% + 表达20% + 逻辑20% + 完整性10% + 创新性10%
             techBase = (int) Math.round(totalScore * 1.05);  // 技术权重最高

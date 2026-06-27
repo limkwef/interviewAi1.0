@@ -84,9 +84,9 @@ public class DashboardService {
             trend = reportMapper.findGrowthData(userId);
         }
         if (trend.size() >= 2) {
-            int firstScore = ((Number) trend.get(0).getOrDefault("score", 0)).intValue();
+            int prevScore = ((Number) trend.get(trend.size() - 2).getOrDefault("score", 0)).intValue();
             int lastScore = ((Number) trend.get(trend.size() - 1).getOrDefault("score", 0)).intValue();
-            stats.setScoreChange(lastScore - firstScore);
+            stats.setScoreChange(lastScore - prevScore);
         } else {
             stats.setScoreChange(0);
         }
@@ -161,12 +161,15 @@ public class DashboardService {
     }
 
     private List<DashboardVO.Recommendation> buildRecommendations(String position) {
+        // 新用户没有面试记录，不推荐题目
+        if (position == null || position.isEmpty()) {
+            return List.of();
+        }
+
         Map<String, Object> params = new HashMap<>();
         params.put("offset", 0);
         params.put("size", 4);
-        if (position != null && !position.isEmpty()) {
-            params.put("direction", position);
-        }
+        params.put("direction", position);
         List<Question> questions = questionMapper.findList(params);
 
         List<DashboardVO.Recommendation> recommendations = new ArrayList<>();

@@ -29,22 +29,23 @@ public class UserFavoriteService {
 
     @Transactional
     public void addFavorite(Long userId, Long questionId) {
-        int count = userFavoriteMapper.countByUserAndQuestion(userId, questionId);
-        if (count > 0) {
-            throw new BusinessException("已收藏该题目");
-        }
-
+        // 检查题目是否存在
         Question question = questionMapper.findById(questionId);
         if (question == null) {
             throw new BusinessException(404, "题目不存在");
         }
 
+        // 原子化插入（INSERT IGNORE + 唯一索引防重复）
         UserFavorite favorite = new UserFavorite();
         favorite.setUserId(userId);
         favorite.setQuestionId(questionId);
-        userFavoriteMapper.insert(favorite);
-        questionMapper.incrementFavoriteCount(questionId);
-        logger.info("用户{}收藏题目{}", userId, questionId);
+        int inserted = userFavoriteMapper.insert(favorite);
+        if (inserted > 0) {
+            questionMapper.incrementFavoriteCount(questionId);
+            logger.info("用户{}收藏题目{}", userId, questionId);
+        } else {
+            logger.debug("用户{}已收藏题目{}，跳过重复", userId, questionId);
+        }
     }
 
     @Transactional
@@ -77,5 +78,23 @@ public class UserFavoriteService {
         data.put("page", page);
         data.put("size", size);
         return data;
+    }
+
+    /**
+     * 批量取消收藏
+     */
+    @Transactional
+    public int batchRemoveFavorite(Long userId, List<Long> questionIds) {
+        if (questionIds == null || questionIds.isEmpty()) return 0;
+        int deleted = userFavoriteMapper.batchDelete(userId, questionIds);
+        // 批量递减 favorite_count
+        for (Long qid : questionIds) {
+            try {
+                questionMapper.decrementFavoriteCount(qid);
+            } catch (Exception e) {
+                logger.warn("递减题目{}收藏数失败", qid, e);
+            }
+        }
+        return deleted;
     }
 }

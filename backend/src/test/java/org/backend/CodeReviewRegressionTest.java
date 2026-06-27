@@ -270,7 +270,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt 包含决策标记指令")
         void buildStreamUserPrompt_shouldContainDecisionMarker() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList());
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
 
             assertTrue(prompt.contains("【决策: follow_up】"), "应包含 follow_up 决策标记");
             assertTrue(prompt.contains("【决策: next】"), "应包含 next 决策标记");
@@ -281,7 +281,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt 有剩余题目且非追问时，包含下一题")
         void buildStreamUserPrompt_shouldIncludeNextQuestion() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList());
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
 
             assertTrue(prompt.contains("下一题题目供参考"), "有剩余题目时应包含下一题提示");
             assertTrue(prompt.contains("什么是GC?"), "应包含下一题内容");
@@ -294,7 +294,7 @@ class CodeReviewRegressionTest {
             history.add(Map.of("role", "assistant", "content", "test", "type", "follow_up"));
 
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, history);
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, history, 2);
 
             assertFalse(prompt.contains("下一题题目供参考"), "追问状态不应包含下一题提示");
         }
@@ -303,7 +303,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildUserPrompt（非流式）要求 JSON 格式输出")
         void buildUserPrompt_shouldRequireJsonFormat() {
             String prompt = promptBuilder.buildUserPrompt(
-                    "technical", 1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList());
+                    "technical", 1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
 
             assertTrue(prompt.contains("JSON"), "非流式 prompt 应要求 JSON 格式");
         }
@@ -312,7 +312,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt（流式）不要求 JSON 格式")
         void buildStreamUserPrompt_shouldNotRequireJsonFormat() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList());
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
 
             assertFalse(prompt.contains("JSON"), "流式 prompt 不应要求 JSON 格式");
         }
@@ -324,7 +324,8 @@ class CodeReviewRegressionTest {
     class CircuitBreakerTest {
 
         private AIService createAIService() {
-            AIService service = new AIService();
+            ExecutorService mockExecutor = Executors.newFixedThreadPool(2);
+            AIService service = new AIService(mockExecutor);
             // 注入必要的依赖
             try {
                 setField(service, "objectMapper", new ObjectMapper());

@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -49,11 +50,21 @@ public class FavoriteController extends BaseController {
     }
 
     @GetMapping("/check/{questionId}")
-    public Result<Map<String, Boolean>> check(HttpServletRequest request, @PathVariable Long questionId) {
+    public Result<Boolean> check(HttpServletRequest request, @PathVariable Long questionId) {
         Long userId = getUserIdFromToken(request);
         boolean isFavorite = userFavoriteService.isFavorite(userId, questionId);
-        Map<String, Boolean> data = new HashMap<>();
-        data.put("isFavorite", isFavorite);
-        return Result.success(data);
+        return Result.success(isFavorite);
+    }
+
+    /**
+     * 批量取消收藏
+     */
+    @DeleteMapping("/batch")
+    public Result<Void> batchRemove(HttpServletRequest request, @RequestBody Map<String, List<Long>> body) {
+        Long userId = getUserIdFromToken(request);
+        List<Long> questionIds = body.get("questionIds");
+        if (questionIds == null || questionIds.isEmpty()) return Result.error(400, "请选择题目");
+        int count = userFavoriteService.batchRemoveFavorite(userId, questionIds);
+        return Result.success("已批量取消" + count + "个收藏", null);
     }
 }

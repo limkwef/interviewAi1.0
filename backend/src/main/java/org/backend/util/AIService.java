@@ -13,6 +13,7 @@ import org.backend.entity.ReportResultVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +23,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -57,11 +58,15 @@ public class AIService {
     @Value("${ai.temperature:0.7}")
     private double temperature;
 
-    /** 单例 HttpClient，避免每次调用都创建新实例 */
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .executor(Executors.newFixedThreadPool(4))
-            .build();
+    /** 单例 HttpClient，避免每次调用都创建新实例，线程池由 AsyncConfig.aiExecutor 管理 */
+    private final HttpClient httpClient;
+
+    public AIService(@Qualifier("aiExecutor") ExecutorService aiExecutor) {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .executor(aiExecutor)
+                .build();
+    }
 
     @Autowired
     private PromptBuilder promptBuilder;
@@ -107,11 +112,19 @@ public class AIService {
     /** 记录调用失败，达到阈值时打开熔断器 */
     private void recordFailure() {
         int failures = consecutiveFailures.incrementAndGet();
-        if (failures >= CIRCUIT_BREAKER_THRESHOLD && !circuitBreakerOpen) {
-            circuitBreakerOpen = true;
-            circuitBreakerOpenedAt = System.currentTimeMillis();
-            logger.error("熔断器打开！DeepSeek API 连续失败 {} 次，暂停调用 {} 秒",
-                    failures, CIRCUIT_BREAKER_COOLDOWN_MS / 1000);
+        if (failures >= CIRCUIT_BREAKER_THRESHOLD) {
+            if (!circuitBreakerOpen) {
+                // 首次打开熔断器
+                circuitBreakerOpen = true;
+                circuitBreakerOpenedAt = System.currentTimeMillis();
+                logger.error("熔断器打开！DeepSeek API 连续失败 {} 次，暂停调用 {} 秒",
+                        failures, CIRCUIT_BREAKER_COOLDOWN_MS / 1000);
+            } else {
+                // 半开状态试探失败 → 重新计时冷却，延长熔断
+                circuitBreakerOpenedAt = System.currentTimeMillis();
+                logger.error("熔断器半开试探失败，重新计时 {} 秒冷却",
+                        CIRCUIT_BREAKER_COOLDOWN_MS / 1000);
+            }
         }
     }
 
@@ -260,6 +273,23 @@ public class AIService {
             onComplete.run();
             return;
         }
+        // completed 标志跨重试共享，避免重试时前一次异步回调仍触发 onComplete
+        final AtomicBoolean completed = new AtomicBoolean(false);
+        Runnable safeComplete = () -> {
+            if (completed.compareAndSet(false, true)) {
+                onComplete.run();
+            }
+        };
+        doChatStreamWithRetry(messages, onChunk, safeComplete, 0);
+    }
+
+    /**
+     * 带重试的流式调用
+     * 网络波动或临时错误时自动重试最多 3 次，间隔 1s、2s
+     */
+    private void doChatStreamWithRetry(List<Map<String, String>> messages, Consumer<String> onChunk,
+                                        Runnable safeComplete, int attempt) {
+
         try {
             Map<String, Object> body = new HashMap<>();
             body.put("model", model);
@@ -277,26 +307,18 @@ public class AIService {
                     .timeout(Duration.ofSeconds(120))
                     .build();
 
-            final AtomicBoolean completed = new AtomicBoolean(false);
-            Runnable safeComplete = () -> {
-                if (completed.compareAndSet(false, true)) {
-                    onComplete.run();
-                }
-            };
-
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
                     .thenAccept(response -> {
                         if (response.statusCode() != 200) {
                             logByStatusCode(response.statusCode(), "chatStream");
-                            recordFailure();
-                            safeComplete.run();
+                            handleStreamFailure(messages, onChunk, safeComplete, attempt);
                             return;
                         }
                         recordSuccess();
                         response.body().forEach(line -> {
                             if (line.startsWith("data: ")) {
                                 String data = line.substring(6).trim();
-                                if ("[DONE]".equals(data)) { safeComplete.run(); return; }
+                                if ("[DONE]".equals(data)) { return; }
                                 try {
                                     JsonNode node = objectMapper.readTree(data);
                                     String content = node.path("choices").path(0).path("delta").path("content").asText("");
@@ -307,14 +329,37 @@ public class AIService {
                         safeComplete.run();
                     })
                     .exceptionally(ex -> {
-                        logger.error("DeepSeek streaming failed: {}", ex.getMessage());
-                        recordFailure();
-                        safeComplete.run();
+                        logger.error("DeepSeek streaming failed (attempt {}): {}", attempt + 1, ex.getMessage());
+                        handleStreamFailure(messages, onChunk, safeComplete, attempt);
                         return null;
                     });
         } catch (Exception e) {
-            logger.error("DeepSeek stream setup failed: {}", e.getMessage());
-            onComplete.run();
+            logger.error("DeepSeek stream setup failed (attempt {}): {}", attempt + 1, e.getMessage());
+            handleStreamFailure(messages, onChunk, safeComplete, attempt);
+        }
+    }
+
+    /**
+     * 流式调用失败处理：重试或记录失败
+     */
+    private void handleStreamFailure(List<Map<String, String>> messages, Consumer<String> onChunk,
+                                      Runnable safeComplete, int attempt) {
+        if (attempt < 2) {
+            long delay = 1000L * (attempt + 1);
+            logger.warn("chatStream 第{}次失败，{}秒后重试...", attempt + 1, delay / 1000);
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                recordFailure();
+                safeComplete.run();
+                return;
+            }
+            doChatStreamWithRetry(messages, onChunk, safeComplete, attempt + 1);
+        } else {
+            logger.error("chatStream 重试3次全部失败");
+            recordFailure();
+            safeComplete.run();
         }
     }
 
@@ -351,10 +396,10 @@ public class AIService {
     // ======================== 面试开场白 ========================
 
     public String generateGreeting(String position, String round, String difficulty,
-                                    int questionCount, List<Question> questions) {
+                                    int questionCount, List<Question> questions, int maxFollowUp) {
         String questionsText = promptBuilder.buildQuestionsListText(round, questions);
         List<Map<String, String>> messages = promptBuilder.buildGreetingMessages(
-                position, round, difficulty, questionCount, questionsText);
+                position, round, difficulty, questionCount, questionsText, maxFollowUp);
 
         String result = chat(messages);
         if (result != null) return result;
@@ -372,7 +417,8 @@ public class AIService {
                                                    int currentQuestion, int totalQuestions,
                                                    String userAnswer, String currentQuestionText,
                                                    List<Question> allQuestions,
-                                                   List<Map<String, String>> history) {
+                                                   List<Map<String, String>> history,
+                                                   int maxFollowUp) {
         int remaining = totalQuestions - currentQuestion;
         String questionsText = promptBuilder.buildQuestionsListText(round, allQuestions);
 
@@ -384,11 +430,11 @@ public class AIService {
 
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content",
-                promptBuilder.buildInterviewSystemPrompt(position, round, difficulty, totalQuestions, questionsText)));
+                promptBuilder.buildInterviewSystemPrompt(position, round, difficulty, totalQuestions, questionsText, maxFollowUp)));
         if (history != null && !history.isEmpty()) messages.addAll(history);
 
         String userPrompt = promptBuilder.buildUserPrompt(round, currentQuestion, currentQuestionText,
-                userAnswer, nextQuestionText, remaining, history);
+                userAnswer, nextQuestionText, remaining, history, maxFollowUp);
         messages.add(Map.of("role", "user", "content", userPrompt));
 
         AIResultVO result = new AIResultVO();
@@ -396,12 +442,19 @@ public class AIService {
         // 优先使用结构化输出
         Map<String, Object> structured = chatStructured(messages);
         if (structured != null) {
-            String type = (String) structured.getOrDefault("decision", "next_question");
+            String rawDecision = (String) structured.getOrDefault("decision", "next_question");
             String evaluation = (String) structured.getOrDefault("evaluation", "");
             String nextQuestionStr = (String) structured.getOrDefault("nextQuestion", "");
 
+            // 统一映射：AI 返回的 "next" → "next_question"，"follow_up" 和 "end" 保持不变
+            String type = switch (rawDecision.toLowerCase()) {
+                case "follow_up" -> "follow_up";
+                case "end" -> "end";
+                default -> "next_question";
+            };
+
             String content = evaluation;
-            if (!nextQuestionStr.isEmpty() && "next".equals(type)) {
+            if (!nextQuestionStr.isEmpty() && "next_question".equals(type)) {
                 content += "\n\n" + nextQuestionStr;
             }
 
@@ -445,6 +498,61 @@ public class AIService {
                 result.setNextQuestion(currentQuestion + 1);
             }
             result.setRemainingQuestions(Math.max(0, remaining - 1));
+        }
+        return result;
+    }
+
+    /**
+     * 简历面试专用：评估回答并返回下一话题（非流式路径）
+     */
+    public AIResultVO evaluateAndRespondForResume(String position, String round, String difficulty,
+                                                   int currentQuestion, int totalQuestions,
+                                                   String userAnswer,
+                                                   List<Map<String, String>> history,
+                                                   int maxFollowUp, String resumeContext) {
+        int remaining = totalQuestions - currentQuestion;
+
+        // 使用简历面试专用 system prompt
+        String systemPrompt = promptBuilder.buildResumeInterviewSystemPrompt(
+                position, round, difficulty, totalQuestions, maxFollowUp, resumeContext);
+
+        // 使用简历面试专用 user prompt
+        String userPrompt = promptBuilder.buildStreamUserPrompt(
+                currentQuestion, "", userAnswer, "", remaining, history, maxFollowUp);
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        if (history != null && !history.isEmpty()) messages.addAll(history);
+        messages.add(Map.of("role", "user", "content", userPrompt));
+
+        AIResultVO result = new AIResultVO();
+
+        // 简历面试直接使用 chat + parseDecisionType（user prompt 要求【决策: xxx】格式，不是 JSON）
+        String aiResponse = chat(messages);
+        if (aiResponse != null) {
+            String type = scoringEngine.parseDecisionType(aiResponse);
+            aiResponse = scoringEngine.stripDecisionMarker(aiResponse);
+
+            if ("end".equals(type) && remaining > 0) type = "next_question";
+            if (remaining <= 0) type = "end";
+
+            result.setContent(aiResponse);
+            result.setType(type);
+            result.setNextQuestion("follow_up".equals(type) ? currentQuestion
+                    : "next_question".equals(type) ? currentQuestion + 1 : currentQuestion);
+            result.setRemainingQuestions("follow_up".equals(type) ? remaining
+                    : "next_question".equals(type) ? remaining - 1 : 0);
+        } else {
+            if (remaining <= 0) {
+                result.setContent("感谢你的回答。本次面试的所有题目已经结束，我将为你生成面试评估报告。");
+                result.setType("end");
+                result.setNextQuestion(currentQuestion);
+            } else {
+                result.setContent(scoringEngine.generateFeedback(difficulty));
+                result.setType("next_question");
+                result.setNextQuestion(currentQuestion + 1);
+                result.setRemainingQuestions(Math.max(0, remaining - 1));
+            }
         }
         return result;
     }
@@ -609,5 +717,69 @@ public class AIService {
             }
         }
         return scoringEngine.getDefaultDiagnosisData();
+    }
+
+    // ======================== 简历解析 ========================
+
+    /**
+     * 解析简历文本为结构化 ResumeData
+     * 风格与 generateDiagnosisReport 一致：优先结构化输出，降级为普通 chat + JSON 提取
+     *
+     * @param rawText PDF/TXT 提取的纯文本
+     * @return 解析后的 Map（可直接转 ResumeData），失败返回 null
+     */
+    public Map<String, Object> parseResume(String rawText) {
+        if (rawText == null || rawText.isBlank()) return null;
+
+        // 截断过长文本（DeepSeek 上下文窗口限制）
+        String safeText = rawText.length() > 8000 ? rawText.substring(0, 8000) : rawText;
+
+        String prompt = "你是一个专业的简历解析器。请从以下简历文本中提取结构化信息，严格按JSON格式返回。\n\n" +
+                "要求：\n" +
+                "1. 只返回JSON，不要包含其他文字\n" +
+                "2. 如果某个字段在简历中找不到，设为 null\n" +
+                "3. skills 中的 level 按以下标准判断：\n" +
+                "   - 简历写了\"精通\"→ \"精通\"\n" +
+                "   - 简历写了\"熟练\"或有3年以上经验 → \"熟练\"\n" +
+                "   - 简历写了\"熟悉\"或有1-3年经验 → \"熟悉\"\n" +
+                "   - 其他 → \"了解\"\n\n" +
+                "JSON 结构：\n" +
+                "{\n" +
+                "  \"basicInfo\": {\"name\":\"姓名\",\"email\":\"邮箱\",\"phone\":\"电话\",\"targetPosition\":\"目标岗位\",\"location\":\"所在城市\",\"yearsOfExperience\":工作年限整数},\n" +
+                "  \"education\": [{\"school\":\"学校\",\"degree\":\"学位\",\"major\":\"专业\",\"startDate\":\"起始时间\",\"endDate\":\"结束时间\"}],\n" +
+                "  \"workExperience\": [{\"company\":\"公司\",\"position\":\"职位\",\"startDate\":\"起始\",\"endDate\":\"结束\",\"description\":\"职责描述\"}],\n" +
+                "  \"projects\": [{\"name\":\"项目名\",\"role\":\"角色\",\"techStack\":[\"技术1\",\"技术2\"],\"description\":\"项目描述\"}],\n" +
+                "  \"skills\": [{\"name\":\"技能名\",\"level\":\"精通/熟练/熟悉/了解\",\"years\":使用年限整数或null}],\n" +
+                "  \"certifications\": [\"证书名称\"],\n" +
+                "  \"selfEvaluation\": \"自我评价\"\n" +
+                "}\n\n" +
+                "---\n以下是简历文本：\n" + safeText;
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "user", "content", prompt));
+
+        // 优先使用结构化输出
+        Map<String, Object> structured = chatStructured(messages);
+        if (structured != null) {
+            logger.info("简历解析成功（结构化输出）");
+            return structured;
+        }
+
+        // 降级：普通 chat + JSON 提取
+        String result = chat(messages);
+        if (result != null) {
+            try {
+                String jsonStr = scoringEngine.extractJson(result);
+                Map<String, Object> parsed = objectMapper.readValue(jsonStr,
+                        new TypeReference<Map<String, Object>>() {});
+                logger.info("简历解析成功（降级提取）");
+                return parsed;
+            } catch (Exception e) {
+                logger.error("简历解析JSON提取失败", e);
+            }
+        }
+
+        logger.warn("简历解析完全失败");
+        return null;
     }
 }

@@ -109,6 +109,24 @@
         DELETE FROM mistake_record WHERE id = #{id}
     </delete>
 
+    <update id="batchUpdateStatus">
+        UPDATE mistake_record
+        SET status = #{status},
+            mastered_time = #{masteredTime}
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <delete id="batchDeleteByIds">
+        DELETE FROM mistake_record
+        WHERE user_id = #{userId} AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
     <!-- ======================== 统计 ======================== -->
 
     <select id="findStats" resultType="java.util.Map">

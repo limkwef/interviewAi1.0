@@ -212,9 +212,8 @@ async function handleLogin() {
     const redirect = route.query.redirect || '/dashboard'
     router.push(redirect)
   } catch (err) {
-    if (err !== false) {
-      ElMessage.error(err.message || '登录失败')
-    }
+    // 错误消息已在 axios 拦截器中统一展示，此处不再重复提示
+    console.error('登录失败：', err)
   } finally {
     loading.value = false
   }

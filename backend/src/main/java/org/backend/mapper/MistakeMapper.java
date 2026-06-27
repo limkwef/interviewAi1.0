@@ -31,6 +31,10 @@ public interface MistakeMapper {
 
     int deleteById(Long id);
 
+    int batchUpdateStatus(@Param("ids") List<Long> ids, @Param("status") Integer status, @Param("masteredTime") java.time.LocalDateTime masteredTime);
+
+    int batchDeleteByIds(@Param("ids") List<Long> ids, @Param("userId") Long userId);
+
     // ======================== 统计 ========================
 
     Map<String, Object> findStats(Long userId);

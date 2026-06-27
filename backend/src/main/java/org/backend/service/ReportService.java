@@ -171,11 +171,12 @@ public class ReportService {
         data.put("highestScore", stats.getOrDefault("highestScore", 0));
 
         if (!trend.isEmpty()) {
-            Map<String, Object> first = trend.get(0);
             Map<String, Object> last = trend.get(trend.size() - 1);
-            int firstScore = ((Number) first.getOrDefault("score", 0)).intValue();
             int lastScore = ((Number) last.getOrDefault("score", 0)).intValue();
-            data.put("improvement", lastScore - firstScore);
+            int prevScore = trend.size() >= 2
+                    ? ((Number) trend.get(trend.size() - 2).getOrDefault("score", 0)).intValue()
+                    : lastScore;
+            data.put("improvement", lastScore - prevScore);
         } else {
             data.put("improvement", 0);
         }
@@ -199,9 +200,9 @@ public class ReportService {
 
         List<Map<String, Object>> trend = reportMapper.findGrowthData(userId);
         if (trend.size() >= 2) {
-            int firstScore = ((Number) trend.get(0).getOrDefault("score", 0)).intValue();
+            int prevScore = ((Number) trend.get(trend.size() - 2).getOrDefault("score", 0)).intValue();
             int lastScore = ((Number) trend.get(trend.size() - 1).getOrDefault("score", 0)).intValue();
-            data.put("improvement", firstScore > 0 ? Math.round((lastScore - firstScore) * 100.0 / firstScore) : 0);
+            data.put("improvement", prevScore > 0 ? Math.round((lastScore - prevScore) * 100.0 / prevScore) : 0);
         } else {
             data.put("improvement", 0);
         }
@@ -219,8 +220,14 @@ public class ReportService {
             throw new BusinessException(403, "无权操作此报告");
         }
         for (Map<String, Object> item : durations) {
-            Integer questionIndex = ((Number) item.get("questionIndex")).intValue();
-            Integer seconds = ((Number) item.get("seconds")).intValue();
+            Number questionIndexRaw = (Number) item.get("questionIndex");
+            Number secondsRaw = (Number) item.get("seconds");
+            if (questionIndexRaw == null || secondsRaw == null) {
+                logger.warn("报告{}的耗时数据缺少字段，跳过：{}", reportId, item);
+                continue;
+            }
+            Integer questionIndex = questionIndexRaw.intValue();
+            Integer seconds = secondsRaw.intValue();
             commentMapper.updateDurationByReportIdAndOrder(reportId, questionIndex, seconds);
         }
         logger.info("报告{}已保存每题耗时数据，共{}条", reportId, durations.size());

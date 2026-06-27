@@ -21,12 +21,13 @@ public class PromptBuilder {
     /** 构建面试系统 Prompt（面试官角色设定 + 行为准则 + 题目列表） */
     public String buildInterviewSystemPrompt(String position, String round,
                                               String difficulty, int questionCount,
-                                              String questionsText) {
+                                              String questionsText, int maxFollowUp) {
         // 参数校验
         if (position == null || position.isEmpty()) position = "java_backend";
         if (round == null || round.isEmpty()) round = "technical";
         if (difficulty == null || difficulty.isEmpty()) difficulty = "medium";
         if (questionCount <= 0) questionCount = 5;
+        if (maxFollowUp < 0) maxFollowUp = 4;
         String safeQuestionsText = questionsText != null ? questionsText : "";
 
         String posName = getPositionName(position);
@@ -35,18 +36,33 @@ public class PromptBuilder {
 
         String prompt = "你是一位经验丰富的" + posName + "面试官，正在进行一场" + roundName + "面试（" + diffName + "难度）。" +
                 "本次面试共" + questionCount + "道题。\n\n" +
+                "=== 面试官人设 ===\n" +
+                "你是一位善于倾听、充满好奇心的资深面试官。你的风格是：\n" +
+                "- 语气友好自然，像真正的面试官在和候选人对话，不是在念考题\n" +
+                "- 对候选人的回答给予真诚的认可，不要泛泛说\"不错\"，而是具体指出哪个点说得好\n" +
+                (maxFollowUp > 0 ? "- 追问时先承接候选人刚才说的内容，再自然引出新问题，不要生硬切换\n" : "") +
+                "- 候选人答得不好时，温和引导而不是冷冰冰地评判\n\n" +
                 "=== 面试官行为准则 ===\n\n" +
                 getRoundSystemPrompt(round) +
                 "\n通用规则：\n" +
                 "1. 严格按照给定的题目列表顺序提问，每次只提一个问题\n" +
-                "2. 根据候选人的回答质量决定是否追问：\n" +
-                "   - 回答充分 → 简要肯定后进入下一题\n" +
-                "   - 回答有遗漏 → 适当追问1-2次，追问要针对漏洞点\n" +
-                "   - 回答'不知道''不会' → 直接判定该题失败，进入下一题\n" +
-                "3. 每次回答后给出简短评价（1-2句话），指出哪里好、哪里不足\n" +
-                "4. 评价必须具体，不能笼统说'回答得不错'，要说明具体哪里不错\n" +
-                "5. 保持专业、严谨的态度\n" +
-                "6. 请用中文交流\n\n";
+                "2. 根据候选人的回答质量决定" + (maxFollowUp > 0 ? "追问/跳题/结束" : "下一题或结束") + "：\n" +
+                "   - 回答充分完整 → 真诚肯定后自然过渡到下一题\n" +
+                (maxFollowUp > 0 ? "   - 回答有关键遗漏 → 先认可已回答的部分，再针对缺失点追问\n" +
+                "   - 回答正确但浅显 → 先认可，再针对原理部分深挖追问，同一题最多追问" + maxFollowUp + "次\n" : "") +
+                "   - 回答\"不知道\"\"不会\" → 不要尴尬或批评，温和地说\"没关系\"后进入下一题\n" +
+                "   - 回答有错误 → 不直接说\"错了\"，" + (maxFollowUp > 0 ? "引导重新思考\n" : "温和纠正后进入下一题\n") +
+                (maxFollowUp > 0 ? "   - 连续2轮追问都说不知道或答不上来 → 边界止损，直接进入下一题，不必问完所有题\n" : "") +
+                "3. 评价要像人说话，不要像机器打分：\n" +
+                "   - 好的回答：\"你对XX的理解很到位，特别是XX那部分的分析很透彻\"\n" +
+                "   - 一般的回答：\"基本方向是对的，不过如果能补充XX方面会更完整\"\n" +
+                "   - 差的回答：\"没关系，这个知识点确实有一定难度，我们继续下一题\"\n" +
+                (maxFollowUp > 0 ? "4. 追问要像自然对话，不要机械提问：\n" +
+                "   - 不要重复候选人已经说过的信息\n" +
+                "   - 用候选人回答中的关键词来承接，再引出追问\n" +
+                "   - 优先用开放式提问（\"能展开说说...\"），少用封闭式提问\n" : "") +
+                (maxFollowUp > 0 ? "5" : "4") + ". 请用中文交流\n\n" +
+                (maxFollowUp <= 0 ? "⚠️【重要】本轮面试为【不追问模式】，禁止对任何题目进行追问。无论候选人回答质量如何，你都必须直接进入下一题或结束面试。回复中不能出现任何追问句式。\n\n" : "");
 
         if (!safeQuestionsText.isEmpty()) {
             prompt += safeQuestionsText;
@@ -58,25 +74,52 @@ public class PromptBuilder {
     public String buildUserPrompt(String round, int currentQuestion,
                                    String currentQuestionText, String userAnswer,
                                    String nextQuestionText, int remaining,
-                                   List<Map<String, String>> history) {
+                                   List<Map<String, String>> history, int maxFollowUp) {
         String baseInstruction =
-                "当前题目（第" + currentQuestion + "题）：\n" + currentQuestionText +
+                "当前题目（第" + (currentQuestion + 1) + "题）：\n" + currentQuestionText +
                 "\n\n候选人的回答：\n" + userAnswer +
-                "\n\n请分析回答并做出决策。你必须严格按照以下 JSON 格式输出（不要包含任何其他文字）：\n" +
+                "\n\n请分析回答并做出决策。先承接候选人的回答内容，用1-2句话真诚评价（具体指出亮点或不足），然后按照以下 JSON 格式输出（不要包含其他文字）：\n" +
                 "{\n" +
-                "  \"evaluation\": \"针对回答的简要评价（1-2句话）\",\n" +
+                "  \"evaluation\": \"承接候选人回答的真诚评价（具体指出亮点或不足，不要泛泛而谈）\",\n" +
                 "  \"decision\": \"follow_up | next | end\",\n" +
                 "  \"nextQuestion\": \"如果你决定进入下一题，直接在这里写下完整的下一题问题；否则留空\"\n" +
                 "}\n\n" +
-                "决策规则：\n" +
-                "- follow_up：回答不够深入或有明显遗漏，需要追问\n" +
-                "- next：回答已充分，进入下一题\n" +
-                "- end：所有题目已完成或无需继续\n";
+                "决策规则：\n";
 
-        if ("hr".equals(round)) {
-            return baseInstruction +
-                    "注意：你是HR面试官，关注软素质和沟通能力。如果进入下一题，请自行提出行为面试问题，不要依赖下面的参考题目。";
+        if (maxFollowUp <= 0) {
+            baseInstruction += "- ⚠️ 本轮面试不允许追问，请直接选择 next 或 end\n";
+        } else {
+            baseInstruction += "\n【追问决策 — 按回答质量选择策略】\n" +
+                "根据候选人的回答质量决定下一步：\n" +
+                "--- 选择 follow_up（继续追问）---\n" +
+                "• 回答正确但浅显（只说出了结论没说出原理）→ 确认性追问 + 深挖性追问\n" +
+                "• 回答有关键遗漏（漏了重要要点）→ 先认可已答部分，再针对缺失点追问\n" +
+                "• 回答有错误 → ⚠️ 必须 follow_up（不得直接进入下一题），不直接说\"错了\"，引导重新思考：\"你说的是 X，但有些场景下其实是 Y，你觉得呢？\"\n" +
+                "• 回答偏离主题 → 温和拉回：\"你提到的 X 很有意思，不过回到刚才的问题……\"\n" +
+                "--- 选择 next（进入下一题）---\n" +
+                "• 回答充分完整、覆盖所有要点 → 真诚肯定后自然过渡到下一题\n" +
+                "--- 选择 end（结束面试）---\n" +
+                "• 所有题目已完成 → 感谢候选人，结束面试\n" +
+                "• 候选人连续2轮回答\"不知道\"或答不上来 → 温和跳过，不必问完所有题\n\n" +
+                "【追问安全规则】\n" +
+                "1. 引用准则：追问必须引用候选人原话作为切入点，不编造技术名词\n" +
+                "2. 不陈述原则：只问不教，不在追问中给出技术结论\n" +
+                "3. 不确定跳过：遇到不熟悉的概念用开放式提问代替具体技术追问\n" +
+                "4. 边界止损：同一题连续2轮追问答不好，直接进入下一题\n\n" +
+                "【追问不重复规则 — 重要】\n" +
+                "• 回顾对话历史中你（面试官）之前说过的话。你在这个话题上已经问过的问题，不要再问第二遍。\n" +
+                "• 每次追问必须引入新的考察角度，或比上一轮更深入一层。如果你上一轮问了\"能不能展开说说\"，本轮就不能再问同样的话。\n" +
+                "• 怎么避免重复：看一眼你之前在这个话题上发过的消息，找到你上次追问问了什么，这次换个方向问。\n" +
+                "• 如果候选人回答了具体内容，你的追问应该基于他回答中的新信息展开，而不是重复你上一轮的提问。\n" +
+                "• 【关键示例】候选人连续两次给出相同的泛泛回答时：\n" +
+                "   ❌ 第一轮问\"能展开说说XX吗？\" → 第二轮还是\"能展开说说XX吗？\"\n" +
+                "   ✅ 第一轮问\"能具体说说XX的实现原理吗？\" → 第二轮问\"刚才说了原理，那实际项目中遇到YY的性能问题怎么处理？\"\n" +
+                "   记住了：回答不变，你的追问角度也必须变。\n";
         }
+
+        baseInstruction += "- next：回答已充分，自然过渡到下一题\n" +
+                "- end：所有题目已完成或无需继续\n\n" +
+                "注意：追问不要重复候选人已经说过的内容，不要问和当前话题无关的问题。\n";
 
         if (remaining > 0 && !"follow_up".equals(getLastType(history))) {
             baseInstruction += "\n下一题题目供参考（如果你决定进入下一题）：\n" + nextQuestionText;
@@ -87,18 +130,45 @@ public class PromptBuilder {
     /** 构建流式面试用户消息（使用【决策: xxx】标记而非 JSON，适合逐字输出场景） */
     public String buildStreamUserPrompt(int currentQuestion, String currentQuestionText,
                                          String userAnswer, String nextQuestionText,
-                                         int remaining, List<Map<String, String>> history) {
-        String prompt = "当前题目（第" + currentQuestion + "题）：\n" + currentQuestionText +
+                                         int remaining, List<Map<String, String>> history,
+                                         int maxFollowUp) {
+        // 简历面试：questionText 为空，使用专用 prompt
+        if (currentQuestionText == null || currentQuestionText.isEmpty()) {
+            return buildResumeStreamUserPrompt(currentQuestion, userAnswer, remaining, history, maxFollowUp);
+        }
+
+        String prompt = "当前题目（第" + (currentQuestion + 1) + "题）：\n" + currentQuestionText +
                 "\n\n候选人的回答：\n" + userAnswer +
-                "\n\n请：1) 针对该回答给出简要评价（1-2句话）；\n" +
-                "2) 根据回答质量决定下一步操作：\n" +
-                "   - 如果回答不够深入或需要补充 → 追问当前题目\n" +
-                "   - 如果回答已足够且还有剩余题目 → 进入下一题\n" +
-                "   - 如果所有题目已覆盖且无需追问 → 结束面试\n" +
+                "\n\n请：\n" +
+                "1) 先承接候选人的回答内容，用1-2句话真诚评价（具体指出亮点或不足，不要泛泛而谈）；\n" +
+                "2) 根据回答质量决定下一步：\n";
+
+        if (maxFollowUp <= 0) {
+            prompt += "   - ⚠️ 本轮面试不允许追问，请直接进入下一题或结束面试\n";
+        } else {
+            prompt += "   - 回答正确但浅显 → 追问当前题目（先认可，再针对缺失的原理部分深挖，不要问已经问过的问题）\n";
+            prompt += "   - 回答有关键遗漏或错误 → ⚠️ 必须追问当前题目，不得直接跳过（先认可已答部分，再引导补充或重新思考，引入新角度）\n";
+        }
+
+        prompt += "   - 回答充分完整 → 自然过渡到下一题（用过渡语衔接，不要生硬说\"下一题\"）\n" +
+                "   - 所有题目已完成或连续2轮答不上来 → 结束面试（感谢候选人的时间）\n" +
                 "3) 在回复的最后，单独用一行标记你的决定（不要包含在其他文字中）：\n" +
                 "   【决策: follow_up】  — 继续追问\n" +
                 "   【决策: next】       — 进入下一题\n" +
-                "   【决策: end】        — 结束面试";
+                "   【决策: end】        — 结束面试\n\n" +
+                "【追问安全规则】\n" +
+                "1. 引用准则：追问必须引用候选人原话作为切入点，不编造技术名词\n" +
+                "2. 不陈述原则：只问不教，不在追问中给出技术结论\n" +
+                "3. 不确定跳过：遇到不熟悉的概念用开放式提问代替具体追问\n" +
+                "4. 边界止损：同一题连续2轮追问答不好，直接进入下一题\n" +
+                "5. 【不重复】回顾对话历史中你已经问过的问题，不要重复问同样的话。每次追问必须比上一轮深入一层或引入新角度。回答不变时追问角度也必须变。\n" +
+                "   示例：第一轮问\"能展开说说吗？\" → 第二轮必须问新的方面，不能重复\"能展开说说吗？\"\n";
+
+        if (maxFollowUp <= 0) {
+            prompt += "\n【最终指令 — 不追问模式】\n" +
+                "⚠️ 本轮面试设置为【不追问模式】，不允许提出任何追问。候选人回答不完整、有遗漏、答错了也禁止追问，直接选择 next 或 end。\n" +
+                "⚠️ 回复中不能包含追问句式，必须用肯定+过渡的方式结束当前话题。这是最终指令，优先级高于所有其他规则。\n";
+        }
 
         if (remaining > 0 && !"follow_up".equals(getLastType(history))) {
             prompt += "\n\n下一题题目供参考（如果你决定进入下一题）：\n" + nextQuestionText;
@@ -106,20 +176,60 @@ public class PromptBuilder {
         return prompt;
     }
 
+    /**
+     * 简历面试专用：流式追问 Prompt（不引用题库题目）
+     */
+    private String buildResumeStreamUserPrompt(int currentQuestion, String userAnswer,
+                                                int remaining, List<Map<String, String>> history,
+                                                int maxFollowUp) {
+        String prompt = "候选人的回答：\n" + userAnswer +
+                "\n\n请：\n" +
+                "1) 先承接候选人的回答内容，用1-2句话真诚评价（具体指出亮点或不足）；\n" +
+                "2) 根据回答质量决定下一步：\n";
+
+        if (maxFollowUp <= 0) {
+            prompt += "   - ⚠️ 本轮面试不允许追问，请直接进入下一题或结束面试\n";
+        } else {
+            prompt += "   - 回答正确但浅显 → 追问当前话题（先认可，再针对缺失的部分深挖）\n";
+            prompt += "   - 回答有关键遗漏或错误 → ⚠️ 必须追问，不得直接跳过（先认可已答部分，再引导补充）\n";
+        }
+
+        prompt += "   - 回答充分完整 → 自然过渡到下一个简历相关话题\n" +
+                "   - 所有话题已覆盖或连续2轮答不上来 → 结束面试\n" +
+                "3) 在回复的最后，单独用一行标记你的决定（不可省略）：\n" +
+                "   【决策: type=follow_up, nextQ=" + currentQuestion + "】  — 继续追问\n" +
+                "   【决策: type=next, nextQ=" + (currentQuestion + 1) + "】       — 进入下一个话题\n" +
+                "   【决策: type=end, nextQ=" + currentQuestion + "】        — 结束面试\n\n" +
+                "⚠️ 决策标记必须出现在回复末尾，格式为【决策: type=xxx, nextQ=xxx】，不可省略！\n\n" +
+                "【注意】你是简历面试模式，请根据候选人的简历内容选择下一个话题，不要使用题库题目。\n" +
+                "当前已进行到第 " + (currentQuestion + 1) + " 个话题，还剩 " + remaining + " 个话题。\n";
+
+        if (maxFollowUp <= 0) {
+            prompt += "\n【最终指令 — 不追问模式】\n" +
+                "⚠️ 不允许提出任何追问。直接选择 next 或 end。\n";
+        }
+
+        return prompt;
+    }
+
     /** 构建开场白消息列表 */
     public List<Map<String, String>> buildGreetingMessages(String position, String round,
                                                             String difficulty, int questionCount,
-                                                            String questionsText) {
+                                                            String questionsText, int maxFollowUp) {
         String posName = getPositionName(position);
         String diffName = getDifficultyName(difficulty);
         String roundName = getRoundName(round);
 
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content",
-                buildInterviewSystemPrompt(position, round, difficulty, questionCount, questionsText)));
+                buildInterviewSystemPrompt(position, round, difficulty, questionCount, questionsText, maxFollowUp)));
         messages.add(Map.of("role", "user", "content",
-                "面试开始，请作为面试官向候选人打招呼，简要介绍本次" + roundName + "面试安排（" + diffName + posName +
-                "方向，共" + questionCount + "道题），然后直接提出第一个面试问题。"));
+                "面试开始，请作为面试官向候选人打招呼并介绍面试安排。\n\n" +
+                "要求：\n" +
+                "- 打招呼要自然亲切，不要太正式刻板\n" +
+                "- 简要说明面试的岗位方向（" + diffName + posName + "方向）、题数（共" + questionCount + "道题），让候选人心里有数\n" +
+                "- 用一句鼓励的话缓解紧张，比如\"放轻松，我们就像聊天一样\"\n" +
+                "- 然后直接提出题目列表中的第一个问题（不要自己编造问题，必须使用题目列表中给出的第一题）"));
         return messages;
     }
 
@@ -206,7 +316,7 @@ public class PromptBuilder {
                 "      }\n" +
                 "    ],\n" +
                 "    \"resources\": [\n" +
-                "      {\"name\": \"算法导论\", \"type\": \"书籍\", \"description\": \"系统学习算法基础\"}\n" +
+                "      {\"title\": \"算法导论\", \"type\": \"书籍\", \"url\": \"https://book.douban.com/subject/xxx\", \"description\": \"系统学习算法基础\"}\n" +
                 "    ]\n" +
                 "  },\n" +
                 "  \"detailedComments\": [\n" +
@@ -226,7 +336,8 @@ public class PromptBuilder {
                 "2. thinkingAnalysis 根据面试表现判断思维模式\n" +
                 "3. mistakePatterns 识别重复出现的错误模式\n" +
                 "4. learningPlan 生成阶段性学习计划\n" +
-                "5. detailedComments 为每道题提供详细点评";
+                "5. detailedComments 为每道题提供详细点评\n" +
+                "6. resources 中每个资源必须使用 title 字段作为名称，并尽可能提供真实可访问的 url（如豆瓣书籍页、LeetCode、GitHub、官方文档等），url 必须是完整的真实链接";
     }
 
     // ======================== 面试轮次 Prompt 模板 ========================
@@ -277,6 +388,7 @@ public class PromptBuilder {
 - 评估候选人能否从系统整体角度思考问题
 - 关注候选人是否具备独立解决问题的能力和技术判断力
 - 如果候选人技术回答突出，可以进一步追问架构层面的问题
+- 保持友善自然的对话氛围，像一位经验丰富的技术Leader在做面试
 
 【评分重点】
 - 技术深度和准确性（核心）
@@ -298,9 +410,30 @@ public class PromptBuilder {
 
 【面试规范】
 - 严格按照给定的技术题目提问，评估候选人的技术深度
-- 追问要针对技术漏洞点，考察候选人的真实理解水平
+- 先认可再追问，语气要温和，像友善的技术导师而非冷冰冰的考官
 - 可以适当考察候选人对技术方案的选择和权衡能力
-- 保持专业、严谨的态度
+
+【追问策略 — 五层递进模式】
+追问必须逐层深入，不跳级，不重复：
+① 确认性追问 — 确认候选人理解了什么："你刚才说的 XX 能再展开说说吗？"
+② 深挖性追问 — 考察原理深度："那 XX 的底层机制具体是怎么实现的？"
+③ 边界性追问 — 考察边界情况和异常处理："如果 XX 边界条件下，你的方案还成立吗？"
+④ 对比性追问 — 考察技术选型能力："为什么选择 XX 而不是 YY？各自的 trade-off 是什么？"
+⑤ 权衡性追问 — 考察系统思维和取舍能力："你这个方案有什么局限性？在什么场景下会失效？"
+
+同一题最多完成 ①→⑤ 的完整递进。候选人对当前层次回答充分 → 进入下一层；回答不完整 → 引导一次，仍不完整则跳过。
+
+【追问递进触发条件 — 决定从哪一层切入】
+• 候选人只答出结论未解释原理 → 从①确认性或②深挖性入手
+• 候选人展现了原理理解 → 进入③边界性："如果边界条件变化，还成立吗？"
+• 候选人展现了系统思维 → 进入④对比性或⑤权衡性，考察 trade-off
+【重要】不要在同一层次反复追问，每次追问必须比上一轮深入一层或引入新的考察角度。已问过的问题不要重复。
+
+【追问安全规则（防幻觉）】
+1. 引用准则：追问必须引用候选人刚才说过的话作为切入点，不要自己编造技术名词或概念
+2. 不陈述原则：追问中只负责问，不负责教，不在追问中给出技术结论或事实陈述
+3. 不确定跳过：候选人提到了你不确定的概念，用开放式提问代替具体技术追问（如"能分享一下你使用 XX 的体验吗？"），不要编造细节
+4. 边界止损：同一题连续 2 轮追问候选人都回答不好或说不知道，直接进入下一题
 
 【评分重点】
 - 技术知识点的准确性和完整性
@@ -505,14 +638,18 @@ public class PromptBuilder {
 
     public String buildQuestionsListText(String round, List<Question> questions) {
         if ("hr".equals(round)) {
-            return "【本轮为HR面试】\n" +
-                   "请忽略下方题库中的技术题目（如有），改为自行提问行为面试题（Behavioral Questions）。\n" +
-                   "要求：\n" +
-                   "- 问题应聚焦：团队协作、冲突处理、学习能力、职业规划、抗压能力等软素质\n" +
-                   "- 使用STAR方法引导候选人举例说明\n" +
-                   "- 不要问技术细节题\n" +
-                   "- 每次只问一个问题，等候选人回答后再问下一个\n" +
-                   "- 共出" + (questions == null || questions.isEmpty() ? 5 : questions.size()) + "道题，控制在合理范围内";
+            if (questions == null || questions.isEmpty()) return "";
+            StringBuilder sb = new StringBuilder("以下是本次HR面试的题目列表，请严格按照这个顺序提问：\n");
+            for (int i = 0; i < questions.size(); i++) {
+                Question q = questions.get(i);
+                sb.append("第").append(i + 1).append("题：").append(q.getTitle());
+                if (q.getContent() != null && !q.getContent().isEmpty()) {
+                    sb.append("\n  题目描述：").append(q.getContent());
+                }
+                sb.append("\n");
+            }
+            sb.append("\n注意：每次只问一题，等候选人回答后再进入下一题。使用STAR方法引导候选人举例说明。");
+            return sb.toString();
         }
         if (questions == null || questions.isEmpty()) return "";
         StringBuilder sb = new StringBuilder("以下是本次面试的题目列表，请严格按照这个顺序提问：\n");
@@ -526,6 +663,56 @@ public class PromptBuilder {
         }
         sb.append("\n注意：每次只问一题，等候选人回答后再进入下一题。");
         return sb.toString();
+    }
+
+    /**
+     * 简历面试专用 System Prompt（不从题库抽题，基于简历动态生成问题）
+     */
+    public String buildResumeInterviewSystemPrompt(String position, String round, String difficulty,
+                                                    int questionCount, int maxFollowUp, String resumeContext) {
+        StringBuilder prompt = new StringBuilder();
+
+        prompt.append("你是一位专业的").append(getPositionName(position)).append("面试官");
+        prompt.append("，正在进行").append(getRoundName(round)).append("面试。\n\n");
+
+        prompt.append("【面试模式】简历面试\n");
+        prompt.append("你需要根据候选人的简历内容进行针对性提问，不要使用题库中的固定题目。\n\n");
+
+        prompt.append("【候选人简历】\n");
+        prompt.append(resumeContext);
+        prompt.append("\n\n");
+
+        prompt.append("【面试要求】\n");
+        prompt.append("- 本次面试共 ").append(questionCount).append(" 道题\n");
+        prompt.append("- 难度等级：").append(getDifficultyName(difficulty)).append("\n");
+        prompt.append("- 基于简历中的技能、项目经历、工作经历进行针对性提问\n");
+        prompt.append("- 根据简历中技能的熟练程度调整问题难度（精通→深入原理，了解→基础概念）\n");
+        prompt.append("- 优先考察简历中提到的核心技能和项目经验\n");
+        prompt.append("- 每次只问一题，等候选人回答后再决定是否追问或进入下一题\n");
+        prompt.append("- 每题最多追问 ").append(maxFollowUp).append(" 次\n\n");
+
+        prompt.append("【提问策略】\n");
+        prompt.append("1. 先从简历中的核心技能开始，逐步深入\n");
+        prompt.append("2. 结合项目经历，考察实际应用能力\n");
+        prompt.append("3. 根据回答质量决定追问深度\n");
+        prompt.append("4. 最后可以问一些综合性的设计或架构问题\n\n");
+
+        prompt.append("【输出格式 — 必须严格遵守，不可省略决策标记】\n");
+        prompt.append("每次回复必须严格遵循以下格式，在回复末尾用方括号标记决策：\n\n");
+        prompt.append("回复内容\n\n");
+        prompt.append("【决策: type=决策类型, nextQ=下一题编号】\n\n");
+        prompt.append("决策类型说明：\n");
+        prompt.append("- answer：通用回复/过渡（候选人说了非答案内容，如打招呼/询问规则/闲聊）\n");
+        prompt.append("- follow_up：追问当前题（候选人回答不完整/过于简短/有错误，需要深挖）\n");
+        prompt.append("- next：评估完当前回答，进入下一题\n");
+        prompt.append("- end：所有题目问完，结束面试\n\n");
+        prompt.append("示例：\n");
+        prompt.append("你对Spring Boot自动配置的理解很到位，特别是提到了@Conditional注解的使用。\n");
+        prompt.append("不过我想再深入了解一下，你在自定义Starter时是如何处理依赖冲突的？\n\n");
+        prompt.append("【决策: type=follow_up, nextQ=0】\n\n");
+        prompt.append("⚠️ 重要：决策标记必须出现在回复末尾，不可省略！\n\n");
+
+        return prompt.toString();
     }
 
     public String buildConversationText(List<Map<String, String>> conversation) {
@@ -560,7 +747,7 @@ public class PromptBuilder {
     }
 
     public String getJobPositionName(String position) {
-        return PositionConstants.getFullName(position);
+        return getPositionName(position);
     }
 
     public String getInterviewRoundName(String round) {

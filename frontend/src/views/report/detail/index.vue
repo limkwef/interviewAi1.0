@@ -107,15 +107,17 @@ const exporting = ref(false)         // 是否正在导出 PDF
 
 
 
-// 监听路由参数变化，重新加载报告
+// 监听路由参数变化，重新加载报告（仅在当前路由是 ReportDetail 时触发，
+// 避免 keep-alive 下导航到 /report/diagnosis/:id 时误触发）
 watch(() => route.params.id, (newId) => {
-  if (newId) {
+  if (newId && route.name === 'ReportDetail') {
     loadReport(newId)
   }
 }, { immediate: true })
 
 // keep-alive 重新激活时，强制刷新（解决首次加载时序问题）
 onActivated(() => {
+  if (route.name !== 'ReportDetail') return
   const id = route.params.id
   if (id) {
     loadReport(id)
@@ -161,10 +163,13 @@ async function checkDiagnosis(sessionId) {
 async function handleGenerateDiagnosis() {
   if (!report.value?.interviewId) return
   generating.value = true
+  const loadingMsg = ElMessage({ message: 'AI 正在生成深度诊断报告，预计需要 30-60 秒，请耐心等待...', type: 'info', duration: 0 })
   try {
     const res = await generateDiagnosis(report.value.interviewId)
+    loadingMsg.close()
     if (res.code === 200 && res.data?.id) {
       diagnosisId.value = res.data.id
+      ElMessage.success('诊断报告生成成功')
       // 直接跳转到诊断报告页
       await nextTick()
       setTimeout(() => {
@@ -172,7 +177,13 @@ async function handleGenerateDiagnosis() {
       }, 500)
     }
   } catch (e) {
-    ElMessage.error('生成诊断报告失败')
+    loadingMsg.close()
+    // 错误消息已在 axios 拦截器中统一展示（如 403 权限不足、500 服务器错误等）
+    // 此处补充兜底提示
+    const msg = e?.message || e?.response?.data?.message
+    if (!msg) {
+      ElMessage.error('生成诊断报告失败，请稍后重试')
+    }
   } finally {
     generating.value = false
   }

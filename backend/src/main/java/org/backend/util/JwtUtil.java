@@ -33,11 +33,12 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(Long userId, String email, String role) {
+    public String generateToken(Long userId, String email, String role, int tokenVersion) {
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("email", email)
                 .claim("role", role)
+                .claim("tokenVersion", tokenVersion)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())
@@ -67,6 +68,15 @@ public class JwtUtil {
         return claims.get("role", String.class);
     }
 
+    public int getTokenVersion(String token) {
+        Claims claims = parseToken(token);
+        Object tv = claims.get("tokenVersion");
+        if (tv instanceof Number) {
+            return ((Number) tv).intValue();
+        }
+        return 0; // 兼容旧 token（无 tokenVersion 字段）
+    }
+
     public boolean isTokenExpired(String token) {
         try {
             Claims claims = parseToken(token);
@@ -78,8 +88,8 @@ public class JwtUtil {
 
     public boolean validateToken(String token) {
         try {
-            parseToken(token);
-            return !isTokenExpired(token);
+            Claims claims = parseToken(token);
+            return !claims.getExpiration().before(new Date());
         } catch (Exception e) {
             return false;
         }

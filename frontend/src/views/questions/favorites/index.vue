@@ -21,7 +21,15 @@
       </div>
 
       <template v-if="favorites.length > 0">
-        <el-table :data="favorites" class="favorites-table" :header-cell-style="headerCellStyle">
+        <div v-if="selectedIds.length > 0" class="batch-bar">
+          <span class="batch-bar__info">已选 <strong>{{ selectedIds.length }}</strong> 项</span>
+          <div class="batch-bar__actions">
+            <el-button size="small" type="danger" @click="batchRemove">批量取消收藏</el-button>
+            <el-button size="small" @click="clearSelection">取消选择</el-button>
+          </div>
+        </div>
+        <el-table :data="favorites" class="favorites-table" :header-cell-style="headerCellStyle" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="45" />
           <el-table-column prop="title" label="题目标题" min-width="280">
             <template #default="{ row }">
               <span class="title-link" @click="goToDetail(row.id)">{{ row.title }}</span>
@@ -112,7 +120,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { View, Star, FolderOpened } from '@element-plus/icons-vue'
 import { getFavorites, removeFavorite } from '@/api/question'
-import { difficultyMap } from '@/utils/constants'
+import request from '@/utils/request'
+import { categoryMap, difficultyMap } from '@/utils/constants'
 
 const router = useRouter()
 
@@ -125,15 +134,32 @@ const total = ref(0)
 // 筛选条件
 const filterCategory = ref('')
 const filterDifficulty = ref('')
+const selectedIds = ref([])
 
-const categoryMap = {
-  java_basic: 'Java基础',
-  spring: 'Spring框架',
-  database: '数据库',
-  frontend: '前端',
-  devops: '运维部署',
-  architecture: '系统架构'
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
 }
+
+function clearSelection() {
+  selectedIds.value = []
+}
+
+async function batchRemove() {
+  try {
+    await ElMessageBox.confirm(`确定取消收藏 ${selectedIds.value.length} 个题目？`, '批量取消收藏', { type: 'warning' })
+    const res = await request.delete('/favorites/batch', { data: { questionIds: selectedIds.value } })
+    if (res.code === 200) {
+      ElMessage.success(res.message || '操作成功')
+      selectedIds.value = []
+      if (favorites.value.length <= selectedIds.value.length && currentPage.value > 1) {
+        currentPage.value--
+      }
+      loadFavorites()
+    }
+  } catch (e) { if (e !== 'cancel') ElMessage.error('操作失败') }
+}
+
+// categoryMap 从 @/utils/constants 导入
 
 
 const difficultyColorMap = {
@@ -289,6 +315,31 @@ onMounted(() => {
 
   .el-select {
     width: 180px;
+  }
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-radius: 4px;
+  margin-bottom: 16px;
+
+  &__info {
+    font-size: 14px;
+    color: #1E40AF;
+
+    strong {
+      font-weight: 700;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
   }
 }
 

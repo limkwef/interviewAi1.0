@@ -9,17 +9,26 @@
         <result property="round" column="round"/>
         <result property="difficulty" column="difficulty"/>
         <result property="questionCount" column="question_count"/>
+        <result property="maxFollowUp" column="max_follow_up"/>
         <result property="currentQuestion" column="current_question"/>
         <result property="questionIds" column="question_ids"/>
+        <result property="resumeId" column="resume_id"/>
+        <result property="interviewType" column="interview_type"/>
         <result property="status" column="status"/>
+        <result property="evaluateStatus" column="evaluate_status"/>
+        <result property="evaluateError" column="evaluate_error"/>
+        <result property="reportId" column="report_id"/>
+        <result property="evaluateRetryCount" column="evaluate_retry_count"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
         <result property="reportCreatedAt" column="report_created_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="org.backend.entity.InterviewSession" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO interview_session (user_id, position, round, difficulty, question_count, current_question, question_ids, status)
-        VALUES (#{userId}, #{position}, #{round}, #{difficulty}, #{questionCount}, #{currentQuestion}, #{questionIds}, #{status})
+        INSERT INTO interview_session (user_id, position, round, difficulty, question_count, max_follow_up,
+                                       current_question, question_ids, resume_id, interview_type, status, evaluate_status, evaluate_retry_count)
+        VALUES (#{userId}, #{position}, #{round}, #{difficulty}, #{questionCount}, #{maxFollowUp},
+                #{currentQuestion}, #{questionIds}, #{resumeId}, #{interviewType}, #{status}, #{evaluateStatus}, #{evaluateRetryCount})
     </insert>
 
     <update id="updateStatus">
@@ -34,15 +43,24 @@
         UPDATE interview_session SET question_ids = #{questionIds} WHERE id = #{id}
     </update>
 
+    <update id="updateEvaluateStatus">
+        UPDATE interview_session SET evaluate_status = #{evaluateStatus}, evaluate_error = #{evaluateError},
+                                     report_id = #{reportId}, evaluate_retry_count = #{evaluateRetryCount}
+        WHERE id = #{id}
+    </update>
+
     <select id="findById" resultMap="sessionResultMap">
-        SELECT id, user_id, position, round, difficulty, question_count, current_question,
-               question_ids, status, created_at, updated_at
+        SELECT id, user_id, position, round, difficulty, question_count, max_follow_up, current_question,
+               question_ids, resume_id, interview_type, status, evaluate_status, evaluate_error, report_id, evaluate_retry_count,
+               created_at, updated_at
         FROM interview_session WHERE id = #{id}
     </select>
 
     <select id="findByUserId" resultMap="sessionResultMap">
         SELECT s.id, s.user_id, s.position, s.round, s.difficulty, s.question_count,
-               s.current_question, s.question_ids, s.status, s.created_at, s.updated_at,
+               s.max_follow_up, s.current_question, s.question_ids, s.resume_id, s.interview_type, s.status,
+               s.evaluate_status, s.report_id,
+               s.created_at, s.updated_at,
                r.total_score, r.level, r.created_at AS report_created_at
         FROM interview_session s
         LEFT JOIN interview_report r ON s.id = r.session_id

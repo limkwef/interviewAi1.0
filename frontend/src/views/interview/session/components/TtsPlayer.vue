@@ -50,13 +50,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, onBeforeUnmount, watch, onMounted } from 'vue'
 import { fetchTts } from '@/api/speech'
 
 const props = defineProps({
   text: { type: String, required: true },
-  autoPlay: { type: Boolean, default: false }
+  autoPlay: { type: Boolean, default: false },
+  muted: { type: Boolean, default: false },
+  activeId: { type: [String, Number], default: null },
+  messageId: { type: [String, Number], default: null }
 })
+
+const emit = defineEmits(['tts-started'])
 
 const audioRef = ref(null)
 const progressRef = ref(null)
@@ -74,11 +79,12 @@ async function loadAudio() {
     const blob = await fetchTts(props.text)
     audioUrl.value = URL.createObjectURL(blob)
 
-    if (props.autoPlay) {
+    if (props.autoPlay && !props.muted) {
       setTimeout(() => {
         if (audioRef.value) {
           audioRef.value.play().catch(() => {})
           playing.value = true
+          emit('tts-started')
         }
       }, 100)
     }
@@ -98,6 +104,7 @@ function togglePlay() {
   } else {
     audioRef.value.play().catch(() => {})
     playing.value = true
+    emit('tts-started')
   }
 }
 
@@ -146,6 +153,36 @@ function formatAudioTime(seconds) {
 onBeforeUnmount(() => {
   if (audioUrl.value) {
     URL.revokeObjectURL(audioUrl.value)
+  }
+})
+
+// 静音时停止播放
+watch(() => props.muted, (val) => {
+  if (val && audioRef.value && playing.value) {
+    audioRef.value.pause()
+    playing.value = false
+  }
+})
+
+// 其他消息开始播放时，停止自己
+watch(() => props.activeId, (val) => {
+  if (val !== props.messageId && audioRef.value && playing.value) {
+    audioRef.value.pause()
+    playing.value = false
+  }
+})
+
+// autoPlay 时自动加载并播放
+onMounted(() => {
+  if (props.autoPlay && !props.muted) {
+    loadAudio()
+  }
+})
+
+// autoPlay 延迟变为 true 时（lastAiMessageId 后设置），也需要自动加载
+watch(() => props.autoPlay, (val) => {
+  if (val && !props.muted && !audioUrl.value && !loading.value) {
+    loadAudio()
   }
 })
 </script>

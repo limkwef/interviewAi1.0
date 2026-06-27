@@ -24,7 +24,7 @@ const isInterviewSession = computed(() => {
 })
 
 onMounted(() => {
-  if (userStore.token && !userStore.userInfo) {
+  if (userStore.token) {
     userStore.fetchUserInfo()
   }
 })

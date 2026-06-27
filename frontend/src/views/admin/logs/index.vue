@@ -166,6 +166,10 @@ function handleReset() {
 
   .search-form {
     margin-bottom: 20px;
+
+    .el-select {
+      min-width: 180px;
+    }
   }
 
   .pagination {

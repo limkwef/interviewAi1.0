@@ -17,9 +17,10 @@ import org.backend.mapper.FeedbackMapper;
 import org.backend.mapper.InterviewSessionMapper;
 import org.backend.mapper.QuestionMapper;
 import org.backend.mapper.UserMapper;
+import org.backend.service.CacheService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,17 +34,25 @@ public class AdminService {
     private final AdminLogMapper adminLogMapper;
     private final InterviewSessionMapper interviewSessionMapper;
     private final FeedbackMapper feedbackMapper;
-    private final BCryptPasswordEncoder passwordEncoder;
+    private final QuestionService questionService;
+    private final UserService userService;
+    private final CacheService cacheService;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminService(UserMapper userMapper, QuestionMapper questionMapper, 
+    public AdminService(UserMapper userMapper, QuestionMapper questionMapper,
                        AdminLogMapper adminLogMapper, InterviewSessionMapper interviewSessionMapper,
-                       FeedbackMapper feedbackMapper) {
+                       FeedbackMapper feedbackMapper, QuestionService questionService,
+                       UserService userService, CacheService cacheService,
+                       PasswordEncoder passwordEncoder) {
         this.userMapper = userMapper;
         this.questionMapper = questionMapper;
         this.adminLogMapper = adminLogMapper;
         this.interviewSessionMapper = interviewSessionMapper;
         this.feedbackMapper = feedbackMapper;
-        this.passwordEncoder = new BCryptPasswordEncoder();
+        this.questionService = questionService;
+        this.userService = userService;
+        this.cacheService = cacheService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // 用户管理
@@ -74,22 +83,29 @@ public class AdminService {
     public void updateUser(Long id, User user) {
         user.setId(id);
         userMapper.updateUser(user);
+        userService.clearUserCache(id);
     }
 
     @Transactional
     public void updateUserStatus(Long id, Integer status) {
         userMapper.updateStatus(id, status);
+        userService.clearUserCache(id);
+        cacheService.increment("user:token_version:" + id);
     }
 
     @Transactional
     public void resetUserPassword(Long id, String newPassword) {
         String encodedPassword = passwordEncoder.encode(newPassword);
         userMapper.updatePassword(id, encodedPassword);
+        userService.clearUserCache(id);
+        cacheService.increment("user:token_version:" + id);
     }
 
     @Transactional
     public void deleteUser(Long id) {
         userMapper.logicalDelete(id);
+        userService.clearUserCache(id);
+        cacheService.increment("user:token_version:" + id);
     }
 
     // 题目管理
@@ -123,6 +139,7 @@ public class AdminService {
     @Transactional
     public Long createQuestion(Question question) {
         questionMapper.insert(question);
+        questionService.clearQuestionCache();
         return question.getId();
     }
 
@@ -130,18 +147,99 @@ public class AdminService {
     public void updateQuestion(Long id, Question question) {
         question.setId(id);
         questionMapper.update(question);
+        questionService.clearQuestionCache();
     }
 
     @Transactional
     public void deleteQuestion(Long id) {
         questionMapper.logicalDelete(id);
+        questionService.clearQuestionCache();
     }
 
     @Transactional
-    public void batchImportQuestions(List<Question> questions) {
-        for (Question q : questions) {
-            questionMapper.insert(q);
+    public Map<String, Object> batchImportQuestions(List<Question> questions, String duplicateStrategy) {
+        int successCount = 0;
+        int skipCount = 0;
+        int failCount = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        for (int i = 0; i < questions.size(); i++) {
+            Question q = questions.get(i);
+
+            // 1. 字段校验
+            List<String> fieldErrors = new ArrayList<>();
+            if (q.getTitle() == null || q.getTitle().isBlank()) {
+                fieldErrors.add("标题不能为空");
+            }
+            if (q.getContent() == null || q.getContent().isBlank()) {
+                fieldErrors.add("内容不能为空");
+            }
+            if (q.getAnswer() == null || q.getAnswer().isBlank()) {
+                fieldErrors.add("答案不能为空");
+            }
+            if (q.getCategory() == null || q.getCategory().isBlank()) {
+                fieldErrors.add("分类不能为空");
+            }
+            if (q.getDifficulty() == null || q.getDifficulty().isBlank()) {
+                fieldErrors.add("难度不能为空");
+            }
+            if (q.getDirection() == null || q.getDirection().isBlank()) {
+                fieldErrors.add("方向不能为空");
+            }
+
+            if (!fieldErrors.isEmpty()) {
+                failCount++;
+                Map<String, Object> failure = new HashMap<>();
+                failure.put("index", i + 1);
+                failure.put("title", q.getTitle());
+                failure.put("reason", String.join("；", fieldErrors));
+                failures.add(failure);
+                continue;
+            }
+
+            String title = q.getTitle().trim();
+
+            // 2. 数据库重复检测
+            Question existing = questionMapper.findByTitle(title);
+
+            if (existing != null) {
+                switch (duplicateStrategy) {
+                    case "skip":
+                        skipCount++;
+                        continue;
+                    case "update":
+                        q.setId(existing.getId());
+                        questionMapper.update(q);
+                        successCount++;
+                        continue;
+                    case "duplicate":
+                        questionMapper.insert(q);
+                        successCount++;
+                        continue;
+                    default:
+                        skipCount++;
+                        continue;
+                }
+            } else {
+                // 无重复，直接插入
+                questionMapper.insert(q);
+                successCount++;
+            }
         }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("successCount", successCount);
+        result.put("skipCount", skipCount);
+        result.put("failCount", failCount);
+        result.put("failures", failures);
+
+        // 清除题库缓存
+        if (successCount > 0) {
+            questionService.clearQuestionCache();
+        }
+
+        logger.info("批量导入完成：成功{}条，跳过{}条，失败{}条，策略={}", successCount, skipCount, failCount, duplicateStrategy);
+        return result;
     }
 
     // 系统统计

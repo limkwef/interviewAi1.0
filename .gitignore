@@ -3,11 +3,24 @@
 .trae/
 .vscode/
 .idea/
+.codex/
+.mimocode/
+.playwright-cli/
+.playwright-mcp/
+.skills/
 *.iml
 *.iws
 *.ipr
 .DS_Store
 Thumbs.db
+
+# === 日志/临时文件 ===
+*.log
+backend.log
+server_log.txt
+
+# === 测试/自动化 ===
+playwright/
 
 # === 构建输出 ===
 frontend/dist/
@@ -43,7 +56,5 @@ Redis-8.8.0-Windows-x64-msys2-with-Service/
 升级方案.txt
 问题.docx
 最终补充.txt
-AI面试系统_代码审查与优化报告.md
-AI面试系统_需求规格说明书.md
-AI面试系统_项目任务书.md
+AI面试系统_*.md
 start.bat

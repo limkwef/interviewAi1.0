@@ -107,6 +107,15 @@
     </div>
 
     <div class="table-container">
+      <div v-if="selectedIds.length > 0" class="batch-bar">
+        <span class="batch-bar__info">已选 <strong>{{ selectedIds.length }}</strong> 项</span>
+        <div class="batch-bar__actions">
+          <el-button size="small" type="success" @click="batchMaster">批量掌握</el-button>
+          <el-button size="small" type="warning" @click="batchReset">批量重置</el-button>
+          <el-button size="small" type="danger" @click="batchDelete">批量移除</el-button>
+          <el-button size="small" @click="clearSelection">取消选择</el-button>
+        </div>
+      </div>
       <el-table
         v-loading="loading"
         :data="mistakeList"
@@ -115,7 +124,9 @@
         :row-style="{ cursor: 'pointer' }"
         empty-text="暂无错题记录"
         @row-click="handleRowClick"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column type="selection" width="45" @click.stop />
         <el-table-column prop="questionTitle" label="题目标题" min-width="280">
           <template #default="{ row }">
             <div class="title-cell">
@@ -210,22 +221,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, RefreshRight, Refresh, Warning, CircleCheck, Document, TrendCharts } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { categoryMap } from '@/utils/constants'
 
 const router = useRouter()
 
-const categoryOptions = [
-  { value: 'java_basic', label: 'Java基础' },
-  { value: 'spring', label: 'Spring框架' },
-  { value: 'database', label: '数据库' },
-  { value: 'frontend', label: '前端' },
-  { value: 'devops', label: '运维部署' },
-  { value: 'architecture', label: '系统架构' }
-]
+const categoryOptions = computed(() =>
+  Object.entries(categoryMap).map(([value, label]) => ({ value, label }))
+)
 
 const difficultyOptions = [
   { value: 'easy', label: '简单' },
@@ -233,7 +240,7 @@ const difficultyOptions = [
   { value: 'hard', label: '困难' }
 ]
 
-const categoryLabelMap = Object.fromEntries(categoryOptions.map(o => [o.value, o.label]))
+const categoryLabelMap = categoryMap
 const difficultyLabelMap = Object.fromEntries(difficultyOptions.map(o => [o.value, o.label]))
 
 const filters = reactive({
@@ -258,6 +265,54 @@ const stats = reactive({
 
 const mistakeList = ref([])
 const loading = ref(false)
+const selectedIds = ref([])
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
+}
+
+function clearSelection() {
+  selectedIds.value = []
+}
+
+async function batchMaster() {
+  try {
+    await ElMessageBox.confirm(`确定将 ${selectedIds.value.length} 道题标记为已掌握？`, '批量掌握', { type: 'success' })
+    const res = await request.put('/mistakes/batch/master', { ids: selectedIds.value })
+    if (res.code === 200) {
+      ElMessage.success(res.message || '操作成功')
+      selectedIds.value = []
+      fetchMistakes()
+      fetchStats()
+    }
+  } catch (e) { if (e !== 'cancel') ElMessage.error('操作失败') }
+}
+
+async function batchReset() {
+  try {
+    await ElMessageBox.confirm(`确定将 ${selectedIds.value.length} 道题重置为待复习？`, '批量重置', { type: 'warning' })
+    const res = await request.put('/mistakes/batch/reset', { ids: selectedIds.value })
+    if (res.code === 200) {
+      ElMessage.success(res.message || '操作成功')
+      selectedIds.value = []
+      fetchMistakes()
+      fetchStats()
+    }
+  } catch (e) { if (e !== 'cancel') ElMessage.error('操作失败') }
+}
+
+async function batchDelete() {
+  try {
+    await ElMessageBox.confirm(`确定移除 ${selectedIds.value.length} 道错题？此操作不可撤销。`, '批量移除', { type: 'error' })
+    const res = await request.delete('/mistakes/batch', { data: { ids: selectedIds.value } })
+    if (res.code === 200) {
+      ElMessage.success(res.message || '操作成功')
+      selectedIds.value = []
+      fetchMistakes()
+      fetchStats()
+    }
+  } catch (e) { if (e !== 'cancel') ElMessage.error('操作失败') }
+}
 
 const headerCellStyle = {
   backgroundColor: '#FAFAFA',
@@ -585,6 +640,29 @@ onMounted(() => {
   border: 1px solid $border-color;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #EFF6FF;
+  border-bottom: 1px solid #BFDBFE;
+
+  &__info {
+    font-size: 14px;
+    color: #1E40AF;
+
+    strong {
+      font-weight: 700;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+  }
 }
 
 .title-cell {

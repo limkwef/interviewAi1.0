@@ -28,6 +28,18 @@ const routes = [
       },
       { path: 'learning-path', name: 'LearningPath', component: () => import('@/views/learning-path/index.vue'), meta: { title: '学习路径', icon: 'TrendCharts' } },
       {
+        path: 'resume',
+        name: 'Resume',
+        redirect: '/resume/list',
+        meta: { title: '简历管理', icon: 'Files' },
+        children: [
+          { path: 'list', name: 'ResumeList', component: () => import('@/views/resume/ResumeList.vue'), meta: { title: '简历列表' } },
+          { path: 'upload', name: 'ResumeUpload', component: () => import('@/views/resume/ResumeUpload.vue'), meta: { title: '上传简历' } },
+          { path: 'create', name: 'ResumeCreate', component: () => import('@/views/resume/ResumeForm.vue'), meta: { title: '在线填写' } },
+          { path: 'detail/:id', name: 'ResumeDetail', component: () => import('@/views/resume/ResumeDetail.vue'), meta: { title: '简历详情', hidden: true } }
+        ]
+      },
+      {
         path: 'interview',
         name: 'Interview',
         redirect: '/interview/config',

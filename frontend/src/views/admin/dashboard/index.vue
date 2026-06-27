@@ -252,14 +252,24 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 16px;
   padding: 8px 0;
+  width: 100%;
 
-  .el-button {
+  :deep(.el-button) {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 16px 24px;
+    justify-content: center;
+    gap: 8px;
+    padding: 18px 32px;
     font-size: 15px;
     width: 100%;
+    min-width: 200px;
+    letter-spacing: 2px;
+    box-sizing: border-box;
+    margin: 0;
   }
+}
+
+:deep(.el-card__body) {
+  padding: 8px 12px !important;
 }
 </style>

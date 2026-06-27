@@ -55,26 +55,54 @@
             <div class="score-info">
               <span class="score-level">{{ diagnosis.level }}</span>
               <span class="score-change" :class="getChangeClass(diagnosis.scoreChange)">
-                {{ diagnosis.scoreChange > 0 ? '+' : '' }}{{ diagnosis.scoreChange }}分
+                较上次{{ diagnosis.scoreChange > 0 ? '提升' : diagnosis.scoreChange < 0 ? '下降' : '持平' }}
+                {{ Math.abs(diagnosis.scoreChange) }}分
               </span>
             </div>
           </div>
           <div class="score-trend" v-if="scoreTrend.length > 0">
             <div class="trend-label">
-              成长趋势
-              <span class="trend-count" v-if="growthData?.totalInterviews">（共 {{ growthData.totalInterviews }} 场）</span>
+              分数趋势
+              <span class="trend-count" v-if="growthData?.totalInterviews">（共 {{ growthData.totalInterviews }} 场面试）</span>
             </div>
-            <div class="trend-chart">
-              <div v-for="(item, index) in scoreTrend" :key="index"
-                   class="trend-bar" :class="{ 'trend-bar--latest': item.isLatest }"
-                   :style="{ height: item.height + '%', backgroundColor: item.color }">
-                <span class="trend-value">{{ item.value }}</span>
-              </div>
-            </div>
-            <div class="trend-labels" v-if="scoreTrend.length > 1">
-              <span v-for="(item, index) in scoreTrend" :key="index" class="trend-label-item">
-                {{ item.date ? formatTrendDate(item.date) : index + 1 }}
-              </span>
+            <div class="trend-line-chart">
+              <svg :viewBox="`0 0 ${svgWidth} ${svgHeight}`" preserveAspectRatio="xMidYMid meet">
+                <!-- 渐变填充 -->
+                <defs>
+                  <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(255,255,255,0.4)" />
+                    <stop offset="100%" stop-color="rgba(255,255,255,0.02)" />
+                  </linearGradient>
+                </defs>
+                <!-- 网格线 -->
+                <line v-for="g in gridLines" :key="'g'+g.y"
+                  :x1="paddingLeft" :y1="g.y" :x2="svgWidth - paddingRight" :y2="g.y"
+                  stroke="rgba(255,255,255,0.15)" stroke-width="0.5" />
+                <!-- 网格刻度 -->
+                <text v-for="g in gridLines" :key="'gl'+g.y"
+                  :x="paddingLeft - 6" :y="g.y + 4"
+                  text-anchor="end" fill="rgba(255,255,255,0.5)" font-size="10">{{ g.label }}</text>
+                <!-- 填充区域 -->
+                <polygon :points="areaPoints" fill="url(#lineGradient)" />
+                <!-- 折线 -->
+                <polyline :points="linePoints"
+                  fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2.5"
+                  stroke-linecap="round" stroke-linejoin="round" />
+                <!-- 数据点 -->
+                <circle v-for="(pt, i) in chartPoints" :key="'d'+i"
+                  :cx="pt.x" :cy="pt.y" :r="pt.isLatest ? 5 : 3.5"
+                  :fill="pt.isLatest ? '#fff' : 'rgba(255,255,255,0.8)'"
+                  :stroke="pt.isLatest ? 'rgba(255,255,255,0.6)' : 'none'"
+                  :stroke-width="pt.isLatest ? 2 : 0" />
+                <!-- 分数标签 -->
+                <text v-for="(pt, i) in chartPoints" :key="'v'+i"
+                  :x="pt.x" :y="pt.y - 10"
+                  text-anchor="middle" fill="#fff" font-size="11" font-weight="600">{{ pt.value }}</text>
+                <!-- 日期标签 -->
+                <text v-for="(pt, i) in chartPoints" :key="'t'+i"
+                  :x="pt.x" :y="svgHeight - 4"
+                  text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="9">{{ pt.dateLabel }}</text>
+              </svg>
             </div>
           </div>
         </div>
@@ -165,6 +193,12 @@
         <!-- 学习计划 -->
         <el-tab-pane label="学习计划" name="plan">
           <div class="section-card">
+            <el-alert type="info" :closable="false" show-icon class="plan-tip">
+              <template #title>
+                以下是 AI 基于本次面试生成的学习建议，属于快照数据。
+                如需跟踪学习进度、勾选已完成任务，请前往侧边栏「学习路径」页面。
+              </template>
+            </el-alert>
             <p class="plan-summary">{{ learningPlan.summary }}</p>
 
             <div class="plan-phases">
@@ -185,9 +219,9 @@
             <div v-if="learningPlan.resources && learningPlan.resources.length > 0" class="plan-resources">
               <h4 class="resources-title">推荐资源</h4>
               <div class="resources-grid">
-                <div v-for="(res, index) in learningPlan.resources" :key="index" class="resource-card">
+                <div v-for="(res, index) in learningPlan.resources" :key="index" class="resource-card" @click="openResource(res)">
                   <el-tag :type="getResourceTagType(res.type)" size="small">{{ res.type }}</el-tag>
-                  <span class="resource-name">{{ res.name }}</span>
+                  <span class="resource-name">{{ res.title || res.name }}</span>
                   <span class="resource-desc">{{ res.description }}</span>
                 </div>
               </div>
@@ -358,24 +392,76 @@ const learningPlan = computed(() => {
   } catch { return { summary: '', phases: [], resources: [] } }
 })
 
-// 分数趋势数据
+// 分数趋势数据（全部场次）
 const scoreTrend = computed(() => {
   const trend = growthData.value?.trend
   if (trend && trend.length > 0) {
-    const maxScore = Math.max(...trend.map(t => t.score), 100)
-    return trend.slice(-6).map((t, i, arr) => ({
+    return trend.map((t, i, arr) => ({
       value: t.score,
-      height: Math.max(8, (t.score / maxScore) * 100),
-      color: getProgressColor(t.score),
       date: t.date,
       isLatest: i === arr.length - 1
     }))
   }
   const score = diagnosis.value?.totalScore || 0
   if (score > 0) {
-    return [{ value: score, height: Math.max(8, score), color: getProgressColor(score), date: '本次', isLatest: true }]
+    return [{ value: score, date: '本次', isLatest: true }]
   }
   return []
+})
+
+// SVG 折线图尺寸常量
+const svgWidth = 380
+const svgHeight = 130
+const paddingLeft = 36
+const paddingRight = 16
+const paddingTop = 18
+const paddingBottom = 18
+
+// 图表数据点坐标
+const chartPoints = computed(() => {
+  const data = scoreTrend.value
+  if (data.length === 0) return []
+  const plotW = svgWidth - paddingLeft - paddingRight
+  const plotH = svgHeight - paddingTop - paddingBottom
+  const scores = data.map(d => d.value)
+  const minS = Math.max(0, Math.floor(Math.min(...scores) / 10) * 10 - 10)
+  const maxS = Math.ceil(Math.max(...scores) / 10) * 10 + 10
+  const range = maxS - minS || 1
+
+  return data.map((d, i) => ({
+    x: paddingLeft + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW),
+    y: paddingTop + plotH - ((d.value - minS) / range) * plotH,
+    value: d.value,
+    isLatest: d.isLatest,
+    dateLabel: formatTrendDate(d.date)
+  }))
+})
+
+// 折线的 points 属性
+const linePoints = computed(() => chartPoints.value.map(p => `${p.x},${p.y}`).join(' '))
+
+// 填充区域（折线 + 底部闭合）
+const areaPoints = computed(() => {
+  const pts = chartPoints.value
+  if (pts.length === 0) return ''
+  const bottom = svgHeight - paddingBottom
+  return `${pts[0].x},${bottom} ${pts.map(p => `${p.x},${p.y}`).join(' ')} ${pts[pts.length - 1].x},${bottom}`
+})
+
+// 网格线（4 条水平线）
+const gridLines = computed(() => {
+  const data = scoreTrend.value
+  if (data.length === 0) return []
+  const scores = data.map(d => d.value)
+  const minS = Math.max(0, Math.floor(Math.min(...scores) / 10) * 10 - 10)
+  const maxS = Math.ceil(Math.max(...scores) / 10) * 10 + 10
+  const plotH = svgHeight - paddingTop - paddingBottom
+  const range = maxS - minS || 1
+  const steps = [0, 0.33, 0.66, 1]
+  return steps.map(s => ({
+    y: paddingTop + plotH * (1 - s),
+    label: Math.round(minS + range * s)
+  }))
 })
 
 onMounted(() => {
@@ -393,30 +479,40 @@ async function fetchDiagnosis() {
 
   try {
     const id = route.params.id
-    let res = await getDiagnosisById(id)
-
-    if (!res.data) {
-      res = await getDiagnosisBySession(id)
+    let res = null
+    try {
+      res = await getDiagnosisById(id)
+    } catch {
+      // 第一次查询失败，尝试用 sessionId 再查
     }
 
-    if (res.data) {
+    if (!res?.data) {
+      try {
+        res = await getDiagnosisBySession(id)
+      } catch {
+        // 两次都失败，进入 error 状态
+      }
+    }
+
+    if (res?.data) {
       diagnosis.value = res.data
     } else {
-      error.value = '未找到诊断报告'
+      error.value = '未找到诊断报告，请确认报告是否存在或您是否有权限查看'
       return
     }
 
-    // 并行拉取成长趋势数据
+    // 拉取成长趋势数据（失败不影响主报告展示）
     try {
       const growthRes = await getGrowthData()
-      if (growthRes.code === 200 && growthRes.data) {
+      if (growthRes?.code === 200 && growthRes.data) {
         growthData.value = growthRes.data
       }
     } catch {
-      console.warn('获取成长趋势数据失败')
+      console.warn('获取成长趋势数据失败，趋势图将不展示')
     }
   } catch (err) {
-    error.value = err.message || '获取诊断报告失败'
+    console.error('加载诊断报告异常:', err)
+    error.value = '加载报告失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -481,6 +577,15 @@ function getResourceTagType(type) {
   return map[type] || 'info'
 }
 
+function openResource(resource) {
+  if (resource.url) {
+    window.open(resource.url, '_blank')
+  } else {
+    const keyword = encodeURIComponent(`${resource.title || resource.name} ${resource.type || ''}`)
+    window.open(`https://www.bing.com/search?q=${keyword}`, '_blank')
+  }
+}
+
 function formatTime(time) {
   if (!time) return ''
   const date = new Date(time)
@@ -500,19 +605,24 @@ async function handleRegenerate() {
   }
 
   regenerating.value = true
+  const loadingMsg = ElMessage({ message: 'AI 正在重新生成诊断报告，预计需要 30-60 秒，请耐心等待...', type: 'info', duration: 0 })
   try {
     const res = await generateDiagnosis(sessionId)
+    loadingMsg.close()
     if (res.code === 200 && res.data) {
       diagnosis.value = res.data
       ElMessage.success('诊断报告已重新生成')
       // 重新加载竞争力数据
       compLoaded = false
       competition.value = null
-    } else {
-      ElMessage.error(res.message || '重新生成失败')
     }
   } catch (err) {
-    ElMessage.error(err.message || '重新生成失败')
+    loadingMsg.close()
+    // 错误消息已在 axios 拦截器中统一展示
+    const msg = err?.message || err?.response?.data?.message
+    if (!msg) {
+      ElMessage.error('重新生成失败，请稍后重试')
+    }
   } finally {
     regenerating.value = false
   }
@@ -677,11 +787,12 @@ async function handleExportPdf() {
   font-size: 16px;
   padding: 4px 12px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 500;
 
-  &.positive { color: #67c23a; }
-  &.negative { color: #f56c6c; }
-  &.neutral { color: #909399; }
+  &.positive { color: #86efac; }
+  &.negative { color: #fca5a5; }
+  &.neutral { color: rgba(255, 255, 255, 0.9); }
 }
 
 .score-trend {
@@ -700,60 +811,15 @@ async function handleExportPdf() {
   font-weight: 400;
 }
 
-.trend-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-  height: 80px;
-}
+.trend-line-chart {
+  width: 100%;
+  max-width: 380px;
 
-.trend-bar {
-  width: 40px;
-  border-radius: 8px 8px 0 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 8px;
-  transition: height 0.5s ease;
-}
-
-.trend-value {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.trend-bar--latest {
-  transform: scaleY(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  position: relative;
-
-  &::after {
-    content: '最新';
-    position: absolute;
-    top: -18px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    background: rgba(255, 255, 255, 0.25);
-    padding: 1px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
   }
-}
-
-.trend-labels {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.trend-label-item {
-  width: 40px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  text-align: center;
 }
 
 // Tabs
@@ -971,6 +1037,11 @@ async function handleExportPdf() {
 }
 
 // 学习计划
+.plan-tip {
+  margin-bottom: 20px;
+  border-radius: 8px;
+}
+
 .plan-summary {
   font-size: 15px;
   color: #606266;
@@ -1066,6 +1137,14 @@ async function handleExportPdf() {
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #7C3AED;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.1);
+    transform: translateY(-2px);
+  }
 }
 
 .resource-name {

@@ -20,11 +20,11 @@
 
     <div class="info-card">
       <div class="info-left">
-        <span class="tag tag--category">{{ categoryLabel }}</span>
+        <span class="tag tag--category">分类：{{ categoryLabel }}</span>
         <span class="tag tag--difficulty" :class="`tag--${question.difficulty}`">
-          {{ difficultyLabel }}
+          难度：{{ difficultyLabel }}
         </span>
-        <span v-if="question.direction" class="tag tag--direction">{{ question.direction }}</span>
+        <span v-if="question.direction" class="tag tag--direction">方向：{{ directionLabel }}</span>
       </div>
       <div class="info-right">
         <span class="stat-item">
@@ -71,12 +71,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Star, View } from '@element-plus/icons-vue'
 import { getQuestionDetail, addFavorite, removeFavorite, checkFavorite } from '@/api/question'
-import { difficultyMap, categoryMap } from '@/utils/constants'
+import { difficultyMap, categoryMap, positionMap } from '@/utils/constants'
 
 const router = useRouter()
 const route = useRoute()
@@ -89,6 +89,7 @@ const favoriteLoading = ref(false)
 
 const difficultyLabel = computed(() => difficultyMap[question.value.difficulty] || question.value.difficulty)
 const categoryLabel = computed(() => categoryMap[question.value.category] || question.value.category)
+const directionLabel = computed(() => positionMap[question.value.direction] || question.value.direction)
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -125,7 +126,7 @@ async function loadFavoriteStatus() {
   try {
     const res = await checkFavorite(id)
     if (res.code === 200) {
-      isFavorited.value = res.data.isFavorite
+      isFavorited.value = res.data === true
     }
   } catch {
     // silent
@@ -156,6 +157,20 @@ async function toggleFavorite() {
 }
 
 onMounted(() => {
+  loadQuestion()
+  loadFavoriteStatus()
+})
+
+// keep-alive 下路由参数变化时重新加载
+watch(() => route.params.id, (newId) => {
+  if (newId && route.name === 'QuestionDetail') {
+    loadQuestion()
+    loadFavoriteStatus()
+  }
+})
+
+onActivated(() => {
+  if (route.name !== 'QuestionDetail') return
   loadQuestion()
   loadFavoriteStatus()
 })

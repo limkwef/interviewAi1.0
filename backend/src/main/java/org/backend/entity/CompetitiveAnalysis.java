@@ -1,5 +1,6 @@
 package org.backend.entity;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -9,7 +10,8 @@ import lombok.Data;
  * 竞争力分析结果（存储在 Redis 缓存中，不持久化到 MySQL）
  */
 @Data
-public class CompetitiveAnalysis {
+public class CompetitiveAnalysis implements Serializable {
+    private static final long serialVersionUID = 1L;
     private Long userId;
     private String targetPosition;
     private Integer currentScore;

@@ -10,7 +10,8 @@ export const positionMap = {
   java_backend: 'Java后端',
   frontend: '前端开发',
   fullstack: '全栈开发',
-  algorithm: '算法工程师'
+  algorithm: '算法工程师',
+  hr: 'HR/软素质'
 }
 
 /** 旧版中文岗位名 → 英文 code（兼容历史数据） */
@@ -57,12 +58,13 @@ export const categoryMap = {
   design_pattern: '设计模式',
   algorithm: '算法',
   frontend: '前端',
-  devops: 'DevOps',
+  devops: '运维部署',
   microservice: '微服务',
   network: '网络',
   operating_system: '操作系统',
   project: '项目经验',
-  hr: 'HR面试题'
+  architecture: '系统架构',
+  behavioral: '行为面试'
 }
 
 /** 面试官人格映射 */

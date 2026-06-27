@@ -7,6 +7,29 @@
       </div>
       <div class="config-body">
         <div class="form-group">
+          <label class="form-label">面试类型</label>
+          <div class="interview-type-options">
+            <div :class="['type-card', config.interviewType === 'normal' ? 'active' : '']"
+                 @click="config.interviewType = 'normal'">
+              <div class="type-icon">📝</div>
+              <div class="type-label">普通面试</div>
+              <div class="type-desc">从题库抽题，按岗位方向出题</div>
+            </div>
+            <div :class="['type-card resume', config.interviewType === 'resume' ? 'active' : '', !hasActiveResume ? 'disabled' : '']"
+                 @click="hasActiveResume && (config.interviewType = 'resume')">
+              <div class="type-icon">📄</div>
+              <div class="type-label">简历面试</div>
+              <div class="type-desc">基于简历内容，AI 精准出题</div>
+            </div>
+          </div>
+          <p v-if="!hasActiveResume" class="count-tip" style="color: #E6A23C;">
+            暂无已激活的简历，请先<a href="/resume/list" style="color: #409EFF;">前往简历管理</a>上传并激活简历
+          </p>
+          <p v-if="config.interviewType === 'resume'" class="count-tip" style="color: #67C23A;">
+            将基于您已激活的简历内容进行针对性提问
+          </p>
+        </div>
+        <div class="form-group">
           <label class="form-label">岗位方向</label>
           <div class="select-wrapper">
             <select v-model="config.position" class="form-select" @change="onPositionChange">
@@ -15,6 +38,7 @@
               <option value="frontend">前端开发</option>
               <option value="fullstack">全栈开发</option>
               <option value="algorithm">算法工程师</option>
+              <option value="hr">HR / 软素质</option>
             </select>
           </div>
         </div>
@@ -22,8 +46,8 @@
           <label class="form-label">面试轮次</label>
           <div class="round-options">
             <div v-for="item in roundOptions" :key="item.value"
-                 :class="['round-card', config.round === item.value ? 'active' : '']"
-                 @click="config.round = item.value">
+                 :class="['round-card', config.round === item.value ? 'active' : '', config.position === 'hr' && item.value !== 'hr' ? 'disabled' : '']"
+                 @click="config.position !== 'hr' && (config.round = item.value)">
               <div class="round-icon">{{ item.icon }}</div>
               <div class="round-label">{{ item.label }}</div>
             </div>
@@ -43,20 +67,25 @@
         <div class="form-group">
           <label class="form-label">题目数量</label>
           <div class="count-control">
-            <button class="count-btn" @click="config.questionCount = Math.max(3, config.questionCount - 1)" :disabled="config.questionCount <= 3">-</button>
-            <input type="number" class="count-input" v-model.number="config.questionCount" min="3" :max="maxCount"
-                   @input="onCountInput" />
-            <button class="count-btn" @click="config.questionCount = Math.min(maxCount, config.questionCount + 1)" :disabled="config.questionCount >= maxCount">+</button>
+            <button class="count-btn" @click="config.questionCount = Math.max(1, config.questionCount - 1)" :disabled="config.questionCount <= 1">-</button>
+            <input type="number" class="count-input" v-model.number="config.questionCount" min="1" />
+            <button class="count-btn" @click="config.questionCount++">+</button>
           </div>
           <p v-if="config.questionCount > availableCount && availableCount > 0" class="count-warning">
-            当前筛选条件下可用题目仅 {{ availableCount }} 道
-          </p>
-          <p v-if="availableCount > 0 && availableCount < 5" class="count-warning">
-            当前筛选条件下仅 {{ availableCount }} 道题目可选（至少需 5 道）
+            当前筛选条件下可用题目仅 {{ availableCount }} 道，超出部分将自动截取
           </p>
           <p v-if="availableCount > 0" class="count-tip">
-            该筛选题库共 {{ availableCount }} 道，最多可选 {{ maxCount }} 道
+            该筛选题库共 {{ availableCount }} 道
           </p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">每题追问次数</label>
+          <div class="count-control">
+            <button class="count-btn" @click="config.maxFollowUp = Math.max(0, config.maxFollowUp - 1)" :disabled="config.maxFollowUp <= 0">-</button>
+            <input type="number" class="count-input" v-model.number="config.maxFollowUp" min="0" />
+            <button class="count-btn" @click="config.maxFollowUp++">+</button>
+          </div>
+          <p class="count-tip">AI 对每道题最多追问的次数，设为 0 则不追问直接跳题</p>
         </div>
         <button class="start-btn" @click="startInterview" :disabled="loading || !isValid">
           <span v-if="loading" class="loading-spinner"></span>
@@ -68,24 +97,49 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { createInterview } from '@/api/interview'
 import { getQuestionCount } from '@/api/question'
+import { getResumeList } from '@/api/resume'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const availableCount = ref(0)
+const hasActiveResume = ref(false)
 
 const config = reactive({
+  interviewType: 'normal',
   position: '',
   round: '',
   difficulty: 'medium',
-  questionCount: 5
+  questionCount: 5,
+  maxFollowUp: 4
 })
 
-const maxCount = computed(() => Math.min(availableCount.value || 10, 10))
+// 从路由参数初始化配置（如从首页快速开始跳转）
+onMounted(async () => {
+  if (route.query.position) {
+    config.position = route.query.position
+  }
+  if (route.query.round) {
+    config.round = route.query.round
+  }
+  if (route.query.position) {
+    fetchAvailableCount()
+  }
+  // 检查是否有已激活的简历
+  try {
+    const res = await getResumeList()
+    if (res.code === 200 && res.data && res.data.records) {
+      hasActiveResume.value = res.data.records.some(r => r.isActive === 1 && r.status === 1)
+    }
+  } catch (e) {
+    console.error('获取简历列表失败:', e)
+  }
+})
 
 const roundOptions = [
   { value: 'technical', label: '技术面', icon: '💻' },
@@ -121,6 +175,9 @@ async function fetchAvailableCount() {
 
 function onPositionChange() {
   fetchAvailableCount()
+  if (config.position === 'hr') {
+    config.round = 'hr'
+  }
 }
 
 function onDifficultyChange(value) {
@@ -128,26 +185,23 @@ function onDifficultyChange(value) {
   fetchAvailableCount()
 }
 
-function onCountInput() {
-  // 允许用户自由输入，不做自动修正
-}
-
 async function startInterview() {
   if (!isValid.value) {
     ElMessage.warning('请完善面试配置')
     return
   }
-  if (availableCount.value < config.questionCount) {
-    ElMessage.warning(`当前筛选条件下可用题目不足（${availableCount.value} 道），请减少题目数量或调整筛选条件`)
-    return
+  if (availableCount.value > 0 && availableCount.value < config.questionCount) {
+    ElMessage.warning(`当前筛选条件下可用题目仅 ${availableCount.value} 道，超出部分将自动截取`)
   }
   loading.value = true
   try {
     const res = await createInterview({
+      interviewType: config.interviewType,
       position: config.position,
       round: config.round,
       difficulty: config.difficulty,
-      questionCount: config.questionCount
+      questionCount: config.questionCount,
+      maxFollowUp: config.maxFollowUp
     })
     if (res.code === 200) {
       router.push(`/interview/session/${res.data.id}`)
@@ -184,7 +238,6 @@ async function startInterview() {
   background: #fff;
   border: 1px solid $border-color;
   border-radius: 12px;
-  padding: 24px;
   padding: 32px;
 }
 
@@ -198,6 +251,53 @@ async function startInterview() {
   font-weight: 500;
   color: $text-primary;
   margin-bottom: 10px;
+}
+
+.interview-type-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.type-card {
+  padding: 16px;
+  text-align: center;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover { border-color: $accent-color; }
+  &.active {
+    border-color: $accent-color;
+    background: $accent-light;
+  }
+  &.active.resume {
+    border-color: #67C23A;
+    background: #f0f9ff;
+  }
+  &.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+.type-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.type-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: 2px;
+}
+
+.type-desc {
+  font-size: 12px;
+  color: $text-muted;
 }
 
 .select-wrapper {
@@ -240,6 +340,11 @@ async function startInterview() {
   &.active {
     border-color: $accent-color;
     background: $accent-light;
+  }
+  &.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 }
 
@@ -380,6 +485,6 @@ async function startInterview() {
 
 @media (max-width: 768px) {
   .config-body { padding: 20px; }
-  .round-options, .difficulty-options { grid-template-columns: 1fr; }
+  .round-options, .difficulty-options, .interview-type-options { grid-template-columns: 1fr; }
 }
 </style>

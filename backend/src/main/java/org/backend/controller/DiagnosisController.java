@@ -3,7 +3,10 @@ package org.backend.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import org.backend.common.Result;
 import org.backend.entity.DiagnosisReport;
+import org.backend.exception.BusinessException;
 import org.backend.service.AIDiagnosisService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +15,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/diagnosis")
 public class DiagnosisController extends BaseController {
+
+    private static final Logger logger = LoggerFactory.getLogger(DiagnosisController.class);
 
     @Autowired
     private AIDiagnosisService diagnosisService;
@@ -22,8 +27,19 @@ public class DiagnosisController extends BaseController {
     @PostMapping("/generate/{sessionId}")
     public Result generateDiagnosis(@PathVariable Long sessionId, HttpServletRequest request) {
         Long userId = getUserIdFromToken(request);
-        DiagnosisReport report = diagnosisService.generateDiagnosisReport(sessionId);
-        return Result.success(report);
+        logger.info("用户{}请求生成诊断报告，sessionId={}", userId, sessionId);
+        // 校验 session 归属（防止 A 用户为 B 用户的 session 生成诊断）
+        diagnosisService.validateSessionOwnership(sessionId, userId);
+        try {
+            DiagnosisReport report = diagnosisService.generateDiagnosisReport(sessionId);
+            logger.info("诊断报告生成成功，sessionId={}, reportId={}", sessionId, report.getId());
+            return Result.success(report);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("生成诊断报告异常，sessionId={}, userId={}", sessionId, userId, e);
+            throw new BusinessException(500, "生成诊断报告失败：" + e.getMessage());
+        }
     }
 
     /**

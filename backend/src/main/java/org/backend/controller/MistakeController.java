@@ -95,6 +95,42 @@ public class MistakeController extends BaseController {
     }
 
     /**
+     * 批量标记为已掌握
+     */
+    @PutMapping("/batch/master")
+    public Result<Void> batchMaster(HttpServletRequest request, @RequestBody Map<String, List<Long>> body) {
+        Long userId = getUserIdFromToken(request);
+        List<Long> ids = body.get("ids");
+        if (ids == null || ids.isEmpty()) return Result.error(400, "请选择错题");
+        int count = mistakeService.batchMarkAsMastered(ids, userId);
+        return Result.success("已批量标记" + count + "道为掌握", null);
+    }
+
+    /**
+     * 批量重置为待复习
+     */
+    @PutMapping("/batch/reset")
+    public Result<Void> batchReset(HttpServletRequest request, @RequestBody Map<String, List<Long>> body) {
+        Long userId = getUserIdFromToken(request);
+        List<Long> ids = body.get("ids");
+        if (ids == null || ids.isEmpty()) return Result.error(400, "请选择错题");
+        int count = mistakeService.batchResetToPending(ids, userId);
+        return Result.success("已批量重置" + count + "道", null);
+    }
+
+    /**
+     * 批量移出错题本
+     */
+    @DeleteMapping("/batch")
+    public Result<Void> batchDelete(HttpServletRequest request, @RequestBody Map<String, List<Long>> body) {
+        Long userId = getUserIdFromToken(request);
+        List<Long> ids = body.get("ids");
+        if (ids == null || ids.isEmpty()) return Result.error(400, "请选择错题");
+        int count = mistakeService.batchDelete(ids, userId);
+        return Result.success("已批量移除" + count + "道", null);
+    }
+
+    /**
      * 获取重做题目列表
      */
     @GetMapping("/review/questions")

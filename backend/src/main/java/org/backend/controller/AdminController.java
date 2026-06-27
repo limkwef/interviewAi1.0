@@ -3,6 +3,8 @@ package org.backend.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.backend.common.Result;
+import org.backend.dto.BatchImportRequest;
+import org.backend.dto.ResetPasswordDTO;
 import org.backend.entity.Question;
 import org.backend.entity.User;
 import org.backend.service.AdminLogService;
@@ -83,9 +85,8 @@ public class AdminController extends BaseController {
     @PutMapping("/users/{id}/password")
     public Result<?> resetUserPassword(HttpServletRequest request,
                                        @PathVariable Long id,
-                                       @RequestBody Map<String, String> body) {
-        String newPassword = body.get("newPassword");
-        adminService.resetUserPassword(id, newPassword);
+                                       @Valid @RequestBody ResetPasswordDTO body) {
+        adminService.resetUserPassword(id, body.getNewPassword());
         logAdminAction(request, "RESET_PASSWORD", "user", id, "重置用户密码");
         return Result.success("密码重置成功", null);
     }
@@ -115,10 +116,15 @@ public class AdminController extends BaseController {
     }
 
     @PostMapping("/questions")
-    public Result<Long> createQuestion(HttpServletRequest request, @RequestBody Question question) {
-        Long id = adminService.createQuestion(question);
-        logAdminAction(request, "CREATE_QUESTION", "question", id, "创建题目");
-        return Result.success("创建成功", id);
+    public Result<Long> createQuestion(HttpServletRequest request, @Valid @RequestBody Question question) {
+        try {
+            Long id = adminService.createQuestion(question);
+            logAdminAction(request, "CREATE_QUESTION", "question", id, "创建题目");
+            return Result.success("创建成功", id);
+        } catch (Exception e) {
+            logger.error("创建题目失败：{}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     @PutMapping("/questions/{id}")
@@ -138,10 +144,11 @@ public class AdminController extends BaseController {
     }
 
     @PostMapping("/questions/batch")
-    public Result<?> batchImportQuestions(HttpServletRequest request, @RequestBody List<Question> questions) {
-        adminService.batchImportQuestions(questions);
-        logAdminAction(request, "BATCH_IMPORT", "question", null, "批量导入题目，数量：" + questions.size());
-        return Result.success("导入成功", null);
+    public Result<?> batchImportQuestions(HttpServletRequest request, @Valid @RequestBody BatchImportRequest importRequest) {
+        Map<String, Object> result = adminService.batchImportQuestions(importRequest.getQuestions(), importRequest.getDuplicateStrategy());
+        logAdminAction(request, "BATCH_IMPORT", "question", null,
+                "批量导入题目，数量：" + importRequest.getQuestions().size() + "，策略：" + importRequest.getDuplicateStrategy());
+        return Result.success("导入完成", result);
     }
 
     // 操作日志
@@ -184,6 +191,10 @@ public class AdminController extends BaseController {
     private void logAdminAction(HttpServletRequest request, String action, 
                                String targetType, Long targetId, String detail) {
         Long adminId = (Long) request.getAttribute("adminId");
+        if (adminId == null) {
+            logger.warn("adminId 为空，跳过操作日志记录，action={}", action);
+            return;
+        }
         String adminName = "管理员"; // 可以根据ID查询用户信息获取
         String ip = getClientIp(request);
         adminLogService.log(adminId, adminName, action, targetType, targetId, detail, ip);

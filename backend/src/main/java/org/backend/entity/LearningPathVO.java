@@ -1,5 +1,6 @@
 package org.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -41,8 +42,10 @@ public class LearningPathVO {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Resource {
         private String title;
+        private String name;
         private String type;
         private String url;
         private String description;

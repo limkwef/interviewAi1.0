@@ -175,21 +175,24 @@ export function getDashboardOverview(params = {}) {
 export function generateDiagnosis(sessionId) {
   return request({
     url: `/diagnosis/generate/${sessionId}`,
-    method: 'post'
+    method: 'post',
+    timeout: 120000  // AI 诊断报告生成可能需要 30-60 秒，设置 120 秒超时
   })
 }
 
 export function getDiagnosisById(id) {
   return request({
     url: `/diagnosis/${id}`,
-    method: 'get'
+    method: 'get',
+    silent: true
   })
 }
 
 export function getDiagnosisBySession(sessionId) {
   return request({
     url: `/diagnosis/session/${sessionId}`,
-    method: 'get'
+    method: 'get',
+    silent: true
   })
 }
 
@@ -204,6 +207,16 @@ export function getDiagnosisHistory(params) {
 export function getLatestDiagnosis() {
   return request({
     url: '/diagnosis/latest',
+    method: 'get'
+  })
+}
+
+/**
+ * 获取报告生成状态（异步评估轮询用）
+ */
+export function getReportStatus(sessionId) {
+  return request({
+    url: `/interview/${sessionId}/report-status`,
     method: 'get'
   })
 }

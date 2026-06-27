@@ -19,28 +19,24 @@
 
       <el-form :inline="true" :model="queryParams" class="search-form">
         <el-form-item label="分类">
-          <el-select v-model="queryParams.category" placeholder="全部" clearable>
-            <el-option label="Java基础" value="java_basic" />
-            <el-option label="Spring" value="spring" />
-            <el-option label="数据库" value="database" />
-            <el-option label="前端" value="frontend" />
-            <el-option label="算法" value="algorithm" />
-            <el-option label="设计模式" value="design_pattern" />
+          <el-select v-model="queryParams.category" placeholder="全部" clearable style="width: 160px;">
+            <el-option v-for="(label, value) in categoryMap" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
         <el-form-item label="难度">
-          <el-select v-model="queryParams.difficulty" placeholder="全部" clearable>
+          <el-select v-model="queryParams.difficulty" placeholder="全部" clearable style="width: 160px;">
             <el-option label="简单" value="easy" />
             <el-option label="中等" value="medium" />
             <el-option label="困难" value="hard" />
           </el-select>
         </el-form-item>
         <el-form-item label="方向">
-          <el-select v-model="queryParams.direction" placeholder="全部" clearable>
+          <el-select v-model="queryParams.direction" placeholder="全部" clearable style="width: 160px;">
             <el-option label="Java后端" value="java_backend" />
             <el-option label="前端" value="frontend" />
             <el-option label="全栈" value="fullstack" />
             <el-option label="算法" value="algorithm" />
+            <el-option label="HR/软素质" value="hr" />
           </el-select>
         </el-form-item>
         <el-form-item label="关键词">
@@ -87,14 +83,16 @@
         <el-table-column prop="favoriteCount" label="收藏数" width="100" />
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button size="small" @click="handleEdit(row)">
-              <el-icon><Edit /></el-icon>
-              编辑
-            </el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)">
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
+            <div class="action-buttons">
+              <el-button size="small" @click="handleEdit(row)">
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button size="small" type="danger" @click="handleDelete(row)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -143,12 +141,7 @@
           <el-col :span="8">
             <el-form-item label="分类" prop="category">
               <el-select v-model="form.category" style="width: 100%">
-                <el-option label="Java基础" value="java_basic" />
-                <el-option label="Spring" value="spring" />
-                <el-option label="数据库" value="database" />
-                <el-option label="前端" value="frontend" />
-                <el-option label="算法" value="algorithm" />
-                <el-option label="设计模式" value="design_pattern" />
+                <el-option v-for="(label, value) in categoryMap" :key="value" :label="label" :value="value" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -168,6 +161,7 @@
                 <el-option label="前端" value="frontend" />
                 <el-option label="全栈" value="fullstack" />
                 <el-option label="算法" value="algorithm" />
+                <el-option label="HR/软素质" value="hr" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -182,30 +176,104 @@
     <el-dialog
       v-model="importDialogVisible"
       title="批量导入"
-      width="500px"
+      width="700px"
     >
-      <div class="import-tips">
-        <p>请上传 JSON 格式的题目数据</p>
+      <div class="import-section">
+        <div class="import-header">
+          <el-button type="text" @click="downloadTemplate">
+            <el-icon><Download /></el-icon>
+            下载导入模板
+          </el-button>
+        </div>
+
         <el-upload
-          class="upload-demo"
+          class="upload-area"
           :auto-upload="false"
           :on-change="handleFileChange"
           :limit="1"
-          accept=".json"
+          accept=".json,.xlsx,.xls,.csv"
+          :file-list="[]"
         >
           <el-button type="primary">选择文件</el-button>
           <template #tip>
             <div class="el-upload__tip">
-              只能上传 JSON 文件
+              支持 JSON、Excel (.xlsx)、CSV 格式
             </div>
           </template>
         </el-upload>
       </div>
+
+      <!-- 数据预览 -->
+      <div v-if="previewData.length > 0" class="preview-section">
+        <h4>数据预览（前5条）</h4>
+        <el-table :data="previewData.slice(0, 5)" border size="small">
+          <el-table-column prop="title" label="标题" width="150" show-overflow-tooltip />
+          <el-table-column prop="category" label="分类" width="100">
+            <template #default="{ row }">{{ getCategoryLabel(row.category) }}</template>
+          </el-table-column>
+          <el-table-column prop="difficulty" label="难度" width="80">
+            <template #default="{ row }">{{ getDifficultyLabel(row.difficulty) }}</template>
+          </el-table-column>
+          <el-table-column prop="direction" label="方向" width="100">
+            <template #default="{ row }">{{ getDirectionLabel(row.direction) }}</template>
+          </el-table-column>
+          <el-table-column label="校验结果" width="120">
+            <template #default="{ row }">
+              <el-tag :type="row._valid ? 'success' : 'danger'" size="small">
+                {{ row._valid ? '通过' : row._errors }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <!-- 导入进度 -->
+      <div v-if="importing" class="progress-section">
+        <el-progress :percentage="progress" :stroke-width="10" />
+        <p class="progress-text">正在导入... {{ progress }}%</p>
+      </div>
+
       <template #footer>
         <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!importFile" @click="handleImportConfirm">
-          导入
+        <el-button type="primary" :disabled="!importFile || importing" @click="handleImportConfirm">
+          开始导入
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入结果弹窗 -->
+    <el-dialog
+      v-model="resultDialogVisible"
+      title="导入结果"
+      width="500px"
+    >
+      <div v-if="importResult" class="result-section">
+        <div class="result-summary">
+          <div class="result-item success">
+            <span class="result-count">{{ importResult.successCount }}</span>
+            <span class="result-label">成功</span>
+          </div>
+          <div class="result-item warning">
+            <span class="result-count">{{ importResult.skipCount }}</span>
+            <span class="result-label">跳过</span>
+          </div>
+          <div class="result-item danger">
+            <span class="result-count">{{ importResult.failCount }}</span>
+            <span class="result-label">失败</span>
+          </div>
+        </div>
+
+        <div v-if="importResult.failures && importResult.failures.length > 0" class="result-detail">
+          <h4>失败详情</h4>
+          <el-table :data="importResult.failures" border size="small">
+            <el-table-column prop="index" label="行号" width="60" />
+            <el-table-column prop="title" label="标题" width="150" show-overflow-tooltip />
+            <el-table-column prop="reason" label="失败原因" />
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="resultDialogVisible = false">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -213,7 +281,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Plus, Upload, Search, Refresh, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Upload, Search, Refresh, Edit, Delete, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getQuestionList,
@@ -222,7 +290,8 @@ import {
   deleteQuestion,
   batchImportQuestions
 } from '@/api/admin'
-import { difficultyMap } from '@/utils/constants'
+import { categoryMap, difficultyMap } from '@/utils/constants'
+import { parseImportFile, validateQuestions, downloadTemplate } from '@/utils/importHelper'
 
 const loading = ref(false)
 const tableData = ref([])
@@ -260,22 +329,18 @@ const rules = {
 
 const importDialogVisible = ref(false)
 const importFile = ref(null)
-
-const categoryMap = {
-  java_basic: 'Java基础',
-  spring: 'Spring',
-  database: '数据库',
-  frontend: '前端',
-  algorithm: '算法',
-  design_pattern: '设计模式'
-}
-
+const previewData = ref([])
+const importing = ref(false)
+const progress = ref(0)
+const resultDialogVisible = ref(false)
+const importResult = ref(null)
 
 const directionMap = {
   java_backend: 'Java后端',
   frontend: '前端',
   fullstack: '全栈',
-  algorithm: '算法'
+  algorithm: '算法',
+  hr: 'HR/软素质'
 }
 
 onMounted(() => {
@@ -302,7 +367,10 @@ function getDirectionLabel(direction) {
 async function handleSearch() {
   loading.value = true
   try {
-    const res = await getQuestionList(queryParams)
+    const res = await getQuestionList({
+      ...queryParams,
+      _t: Date.now()  // 添加时间戳防止缓存
+    })
     tableData.value = res.data.list
     total.value = res.data.total
   } catch (err) {
@@ -384,28 +452,71 @@ async function handleDelete(row) {
 
 function handleBatchImport() {
   importFile.value = null
+  previewData.value = []
+  importing.value = false
+  progress.value = 0
+  importResult.value = null
   importDialogVisible.value = true
 }
 
-function handleFileChange(file) {
+async function handleFileChange(file) {
   importFile.value = file.raw
+  try {
+    const data = await parseImportFile(file.raw)
+    previewData.value = validateQuestions(data)
+  } catch (err) {
+    ElMessage.error('文件解析失败：' + err.message)
+    importFile.value = null
+    previewData.value = []
+  }
 }
 
 async function handleImportConfirm() {
-  if (!importFile.value) return
-  const reader = new FileReader()
-  reader.onload = async (e) => {
-    try {
-      const questions = JSON.parse(e.target.result)
-      await batchImportQuestions(questions)
-      ElMessage.success('导入成功')
-      importDialogVisible.value = false
-      handleSearch()
-    } catch (err) {
-      ElMessage.error('导入失败，请检查文件格式')
-    }
+  if (!importFile.value || previewData.value.length === 0) return
+
+  // 检查是否有校验失败的数据
+  const validData = previewData.value.filter(item => item._valid)
+  if (validData.length === 0) {
+    ElMessage.error('没有通过校验的数据，请检查文件内容')
+    return
   }
-  reader.readAsText(importFile.value)
+
+  importing.value = true
+  progress.value = 0
+
+  try {
+    // 分批导入，每批100条
+    const chunkSize = 100
+    const chunks = []
+    for (let i = 0; i < validData.length; i += chunkSize) {
+      chunks.push(validData.slice(i, i + chunkSize))
+    }
+
+    let totalResult = { successCount: 0, skipCount: 0, failCount: 0, failures: [] }
+
+    for (let i = 0; i < chunks.length; i++) {
+      const result = await batchImportQuestions({ questions: chunks[i], duplicateStrategy: 'skip' })
+      if (result.data) {
+        totalResult.successCount += result.data.successCount || 0
+        totalResult.skipCount += result.data.skipCount || 0
+        totalResult.failCount += result.data.failCount || 0
+        if (result.data.failures) {
+          totalResult.failures = totalResult.failures.concat(result.data.failures)
+        }
+      }
+      progress.value = Math.round(((i + 1) / chunks.length) * 100)
+    }
+
+    importResult.value = totalResult
+    importDialogVisible.value = false
+    resultDialogVisible.value = true
+    handleSearch()
+  } catch (err) {
+    ElMessage.error('导入失败：' + (err.message || '未知错误'))
+  } finally {
+    importing.value = false
+    progress.value = 0
+  }
 }
 </script>
 
@@ -425,16 +536,101 @@ async function handleImportConfirm() {
     margin-bottom: 20px;
   }
 
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+  }
+
   .pagination {
     margin-top: 20px;
     display: flex;
     justify-content: flex-end;
   }
 
-  .import-tips {
-    p {
+  .import-section {
+    margin-bottom: 20px;
+
+    .import-header {
       margin-bottom: 16px;
+    }
+
+    .upload-area {
+      width: 100%;
+    }
+  }
+
+  .preview-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+
+    h4 {
+      margin-bottom: 12px;
+      font-weight: bold;
+      color: #333;
+    }
+  }
+
+  .progress-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+
+    .progress-text {
+      margin-top: 8px;
+      text-align: center;
       color: #666;
+    }
+  }
+
+  .result-section {
+    .result-summary {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 24px;
+      padding: 20px 0;
+      background: #f5f5f5;
+      border-radius: 8px;
+    }
+
+    .result-item {
+      text-align: center;
+
+      .result-count {
+        display: block;
+        font-size: 32px;
+        font-weight: bold;
+        line-height: 1.2;
+      }
+
+      .result-label {
+        display: block;
+        margin-top: 8px;
+        font-size: 14px;
+        color: #666;
+      }
+
+      &.success .result-count {
+        color: #67c23a;
+      }
+
+      &.warning .result-count {
+        color: #e6a23c;
+      }
+
+      &.danger .result-count {
+        color: #f56c6c;
+      }
+    }
+
+    .result-detail {
+      h4 {
+        margin-bottom: 12px;
+        font-weight: bold;
+        color: #333;
+      }
     }
   }
 }

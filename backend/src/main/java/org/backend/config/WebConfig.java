@@ -2,11 +2,11 @@ package org.backend.config;
 
 import java.nio.file.Paths;
 
-import org.backend.interceptor.AdminInterceptor;
-import org.backend.interceptor.UserInterceptor;
+import org.backend.interceptor.RateLimitInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -18,19 +18,24 @@ public class WebConfig implements WebMvcConfigurer {
     private String uploadPath;
 
     @Autowired
-    private AdminInterceptor adminInterceptor;
+    private RateLimitInterceptor rateLimitInterceptor;
 
-    @Autowired
-    private UserInterceptor userInterceptor;
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
+    }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(adminInterceptor)
-                .addPathPatterns("/api/admin/**");
-        
-        registry.addInterceptor(userInterceptor)
+        // 限流拦截器（认证/鉴权由 Spring Security 接管）
+        registry.addInterceptor(rateLimitInterceptor)
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/auth/**", "/api/public/**", "/api/questions/**", "/api/tags/**", "/uploads/**");
+                .excludePathPatterns("/api/auth/**", "/api/public/**", "/api/tags/**");
     }
 
     @Override

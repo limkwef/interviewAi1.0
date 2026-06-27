@@ -36,8 +36,15 @@ public class MistakeService {
         Map.entry("java_basic", "Java基础"),
         Map.entry("spring", "Spring框架"),
         Map.entry("database", "数据库"),
+        Map.entry("redis", "Redis"),
+        Map.entry("design_pattern", "设计模式"),
+        Map.entry("algorithm", "算法"),
         Map.entry("frontend", "前端"),
         Map.entry("devops", "运维部署"),
+        Map.entry("microservice", "微服务"),
+        Map.entry("network", "网络"),
+        Map.entry("operating_system", "操作系统"),
+        Map.entry("project", "项目经验"),
         Map.entry("architecture", "系统架构")
     );
 
@@ -192,6 +199,30 @@ public class MistakeService {
             throw new BusinessException(403, "无权操作此记录");
         }
         mistakeMapper.deleteById(id);
+    }
+
+    /**
+     * 批量标记为已掌握
+     */
+    public int batchMarkAsMastered(List<Long> ids, Long userId) {
+        if (ids == null || ids.isEmpty()) return 0;
+        return mistakeMapper.batchUpdateStatus(ids, 1, LocalDateTime.now());
+    }
+
+    /**
+     * 批量重置为待复习
+     */
+    public int batchResetToPending(List<Long> ids, Long userId) {
+        if (ids == null || ids.isEmpty()) return 0;
+        return mistakeMapper.batchUpdateStatus(ids, 0, null);
+    }
+
+    /**
+     * 批量移出错题本
+     */
+    public int batchDelete(List<Long> ids, Long userId) {
+        if (ids == null || ids.isEmpty()) return 0;
+        return mistakeMapper.batchDeleteByIds(ids, userId);
     }
 
     /**

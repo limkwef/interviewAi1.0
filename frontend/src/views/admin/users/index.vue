@@ -265,6 +265,14 @@ async function handleDialogConfirm() {
 
   .search-form {
     margin-bottom: 20px;
+
+    .el-select {
+      min-width: 180px;
+    }
+
+    .el-input {
+      min-width: 200px;
+    }
   }
 
   .pagination {

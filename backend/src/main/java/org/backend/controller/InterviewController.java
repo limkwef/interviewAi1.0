@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 import org.backend.common.Result;
+import org.backend.dto.InterviewCreateRequest;
+import org.backend.dto.SendMessageRequest;
 import org.backend.entity.EndInterviewVO;
 import org.backend.entity.InterviewCreateVO;
 import org.backend.entity.InterviewHistoryVO;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/interview")
@@ -46,35 +49,21 @@ public class InterviewController extends BaseController {
     }
 
     @PostMapping("/create")
-    public Result<InterviewCreateVO> create(HttpServletRequest request, @RequestBody Map<String, Object> body) {
+    public Result<InterviewCreateVO> create(HttpServletRequest request,
+                                            @Valid @RequestBody InterviewCreateRequest body) {
         Long userId = getUserIdFromToken(request);
-        String position = (String) body.get("position");
-        String round = (String) body.get("round");
-        String difficulty = (String) body.get("difficulty");
-        int questionCount = body.get("questionCount") != null ? ((Number) body.get("questionCount")).intValue() : 5;
-
-        if (position == null || position.isEmpty()) {
-            return Result.error(400, "请选择岗位方向");
-        }
-        if (round == null || round.isEmpty()) {
-            return Result.error(400, "请选择面试轮次");
-        }
-        if (difficulty == null || difficulty.isEmpty()) {
-            return Result.error(400, "请选择难度等级");
-        }
-
-        InterviewCreateVO data = interviewService.createInterview(userId, position, round, difficulty, questionCount);
+        InterviewCreateVO data = interviewService.createInterview(
+                userId, body.getPosition(), body.getRound(), body.getDifficulty(),
+                body.getQuestionCount(), body.getMaxFollowUp(),
+                body.getResumeId(), body.getInterviewType());
         return Result.success("面试创建成功", data);
     }
 
     @PostMapping("/{id}/message")
-    public Result<SendMessageVO> sendMessage(HttpServletRequest request, @PathVariable Long id, @RequestBody Map<String, String> body) {
+    public Result<SendMessageVO> sendMessage(HttpServletRequest request, @PathVariable Long id,
+                                             @Valid @RequestBody SendMessageRequest body) {
         Long userId = getUserIdFromToken(request);
-        String content = body.get("content");
-        if (content == null || content.trim().isEmpty()) {
-            return Result.error(400, "消息内容不能为空");
-        }
-        SendMessageVO data = interviewService.sendMessage(id, userId, content.trim());
+        SendMessageVO data = interviewService.sendMessage(id, userId, body.getContent().trim());
         return Result.success(data);
     }
 
@@ -127,24 +116,30 @@ public class InterviewController extends BaseController {
         return Result.success(data);
     }
 
+    /**
+     * 轮询报告生成状态
+     */
+    @GetMapping("/{id}/report-status")
+    public Result<Map<String, Object>> reportStatus(HttpServletRequest request, @PathVariable Long id) {
+        Long userId = getUserIdFromToken(request);
+        Map<String, Object> data = interviewService.getReportStatus(id, userId);
+        return Result.success(data);
+    }
+
     @PostMapping(value = "/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamMessage(
             HttpServletRequest request,
             @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody SendMessageRequest body) {
         Long userId = getUserIdFromToken(request);
-        String content = body.get("content");
-        if (content == null || content.trim().isEmpty()) {
-            throw new BusinessException(400, "消息内容不能为空");
-        }
 
         SseEmitter emitter = new SseEmitter(300000L);
 
         sseExecutor.execute(() -> {
             try {
-                Map<String, Object> data = interviewService.sendMessageStream(id, userId, content.trim(), emitter);
-                emitter.complete();
+                interviewService.sendMessageStream(id, userId, body.getContent().trim(), emitter);
             } catch (Exception e) {
+                logger.error("sendMessageStream failed", e);
                 emitter.completeWithError(e);
             }
         });
