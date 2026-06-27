@@ -1,6 +1,6 @@
 # AI 模拟面试系统
 
-基于 **Vue 3 + Spring Boot 3 + DeepSeek AI** 的智能模拟面试系统，支持多岗位、多轮次、多难度的 AI 模拟面试，提供实时评分、诊断报告、错题本、学习路径等功能。
+基于 **Vue 3 + Spring Boot 3 + DeepSeek AI** 的智能模拟面试系统，支持多岗位、多轮次、多难度的 AI 模拟面试，提供实时评分、诊断报告、错题本、学习路径、简历解析等功能。
 
 ---
 
@@ -44,6 +44,12 @@
 - 操作日志审计
 - 反馈管理
 
+### 📄 简历模块
+- 简历上传与解析（PDF/Word → AI 结构化提取）
+- 简历数据管理（教育经历、工作经验、项目经历、技能标签）
+- 简历面试模式（AI 根据简历内容针对性提问）
+- 简历版本管理（多份简历切换、激活）
+
 ### 🎤 语音能力
 - 语音输入（百度 ASR）
 - AI 回复朗读（百度 TTS）
@@ -69,14 +75,16 @@
 | 技术 | 说明 |
 |------|------|
 | Spring Boot 3.5 | Web 框架 |
+| Spring Security | 安全框架（JWT 认证 + 权限控制） |
 | MyBatis 3.0 | ORM |
 | MySQL | 关系数据库 |
-| Redis | 缓存 + 上下文存储 |
+| Redis | 缓存 + 上下文存储 + 分布式锁 |
 | JWT (jjwt 0.12) | 身份认证 |
 | Spring Security Crypto | BCrypt 密码加密 |
 | DeepSeek API | AI 对话模型 |
 | 百度语音 API | ASR + TTS |
 | SSE | 流式响应 |
+| Apache PDFBox | PDF 文本提取 |
 
 ---
 
@@ -93,8 +101,10 @@
 -- 创建数据库
 CREATE DATABASE interview DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- 执行初始化脚本
-source backend/init.sql
+-- 执行建表脚本（项目启动后由 MyBatis 自动建表，或手动执行 seed.sql 中的表结构）
+USE interview;
+
+-- 导入测试数据（可选）
 source backend/seed.sql
 ```
 
@@ -104,10 +114,29 @@ source backend/seed.sql
 cp backend/src/main/resources/application.yml backend/src/main/resources/application-local.yml
 ```
 
-> **注意**：`application.yml` 中的 API Key 和密码需要替换为你自己的凭据。建议使用环境变量：
-> - `AI_API_KEY` — DeepSeek API Key
-> - `BAIDU_API_KEY` — 百度语音 API Key
-> - `BAIDU_SECRET_KEY` — 百度语音 Secret Key
+编辑 `application-local.yml`，填入你的实际配置：
+
+```yaml
+spring:
+  datasource:
+    password: your_db_password        # MySQL 密码
+  data:
+    redis:
+      password: your_redis_password   # Redis 密码
+
+jwt:
+  secret: your_jwt_secret_key_at_least_32_bytes_long  # JWT 密钥（≥32字节）
+
+ai:
+  api-key: sk-xxx                     # DeepSeek API Key
+
+baidu:
+  speech:
+    api-key: xxx                      # 百度语音 API Key
+    secret-key: xxx                   # 百度语音 Secret Key
+```
+
+> **注意**：`application.yml` 中的敏感信息已替换为环境变量占位符，本地开发请使用 `application-local.yml`（已在 `.gitignore` 中排除）。
 
 ### 3. 启动后端
 ```bash
@@ -131,7 +160,7 @@ npm run dev
 ## 项目结构
 
 ```
-ai-interview-system/
+interview-ai/
 ├── frontend/                     # Vue 3 前端
 │   ├── src/
 │   │   ├── api/                  # API 接口模块
@@ -142,22 +171,43 @@ ai-interview-system/
 │   │   ├── styles/               # 全局样式
 │   │   ├── utils/                # 工具函数
 │   │   └── views/                # 页面视图
+│   │       ├── admin/            # 管理后台
+│   │       ├── dashboard/        # 仪表盘
+│   │       ├── interview/        # 面试（配置 + 会话）
+│   │       ├── learning-path/    # 学习路径
+│   │       ├── login/            # 登录
+│   │       ├── questions/        # 题库（列表/详情/收藏/错题）
+│   │       ├── register/         # 注册
+│   │       ├── report/           # 报告（详情/诊断）
+│   │       └── resume/           # 简历管理
 │   ├── index.html
 │   └── vite.config.js
 │
 ├── backend/                      # Spring Boot 后端
 │   └── src/main/java/org/backend/
-│       ├── common/               # 通用响应封装
-│       ├── config/               # 配置类
+│       ├── config/               # 配置类（Security、JWT、异步、跨域）
 │       ├── controller/           # 控制器
 │       ├── dto/                  # 数据传输对象
 │       ├── entity/               # 实体 + VO
-│       ├── exception/            # 异常处理
-│       ├── interceptor/          # 拦截器
-│       ├── mapper/               # MyBatis 映射
+│       ├── exception/            # 全局异常处理
+│       ├── interceptor/          # 拦截器（限流、用户认证）
+│       ├── mapper/               # MyBatis 映射接口 + XML
 │       ├── service/              # 业务逻辑
+│       │   ├── InterviewService          # 面试核心流程
+│       │   ├── InterviewEvaluateService  # AI 评估 + 报告生成
+│       │   ├── InterviewContextService   # Redis 对话上下文
+│       │   ├── AIDiagnosisService        # AI 深度诊断
+│       │   ├── LearningPathService       # 学习路径规划
+│       │   ├── QuestionSelector          # 智能抽题策略
+│       │   ├── ResumeService             # 简历解析与管理
+│       │   └── ...
 │       └── util/                 # 工具类
+│           ├── AIService         # DeepSeek API 调用 + 熔断器
+│           ├── PromptBuilder     # Prompt 模板管理
+│           ├── ScoringEngine     # 评分引擎 + 降级策略
+│           └── JwtUtil           # JWT 工具
 │
+├── seed.sql                      # 数据库初始化脚本
 └── README.md
 ```
 
@@ -187,11 +237,22 @@ ai-interview-system/
 - 维度分偏差过大（>15分）时自动按比例修正
 - 确保评分一致性和可解释性
 
+### 🔐 安全架构
+- Spring Security + JWT 双重认证
+- 角色权限控制（普通用户 / 管理员）
+- 接口限流（Redis 令牌桶）
+- BCrypt 密码加密
+
+### 📄 简历 AI 解析
+- PDF/Word 文件上传 → 文本提取 → AI 结构化解析
+- 解析结果：教育经历、工作经验、项目经历、技能标签
+- 简历面试模式：AI 根据简历内容动态生成针对性问题
+
 ---
 
 ## 贡献
 
-本项目为毕业设计 / 课程实践项目，欢迎提出 Issue 或 Pull Request。
+本项目为 课程实践项目，欢迎提出 Issue 或 Pull Request。
 
 ---
 
