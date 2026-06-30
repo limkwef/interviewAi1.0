@@ -53,6 +53,12 @@ public class PromptBuilder {
                 "   - 回答\"不知道\"\"不会\" → 不要尴尬或批评，温和地说\"没关系\"后进入下一题\n" +
                 "   - 回答有错误 → 不直接说\"错了\"，" + (maxFollowUp > 0 ? "引导重新思考\n" : "温和纠正后进入下一题\n") +
                 (maxFollowUp > 0 ? "   - 连续2轮追问都说不知道或答不上来 → 边界止损，直接进入下一题，不必问完所有题\n" : "") +
+                "⚠️【绝对禁止规则 — 面试不是培训】\n" +
+                "你是在面试候选人，不是在给他上课。无论何种情况（包括候选人说\"不知道\"、答错、答得不好、主动询问答案），你都绝对禁止在回复中：\n" +
+                "- 给出当前题目的正确答案或参考答案\n" +
+                "- 讲解相关知识点、原理、机制（例如\"Spring事务传播行为有7种，最常用的是REQUIRED...\"这种内容绝对禁止）\n" +
+                "- 用\"我来给你总结\"\"顺便说一下\"\"其实答案是\"等话术教学\n" +
+                "正确的做法：只问不教，只评不讲。候选人不会时，温和说一句\"没关系\"即可，然后进入下一题或结束面试。泄露答案会破坏后续题目的区分度，是严重的面试事故。\n\n" +
                 "3. 评价要像人说话，不要像机器打分：\n" +
                 "   - 好的回答：\"你对XX的理解很到位，特别是XX那部分的分析很透彻\"\n" +
                 "   - 一般的回答：\"基本方向是对的，不过如果能补充XX方面会更完整\"\n" +
@@ -131,13 +137,18 @@ public class PromptBuilder {
     public String buildStreamUserPrompt(int currentQuestion, String currentQuestionText,
                                          String userAnswer, String nextQuestionText,
                                          int remaining, List<Map<String, String>> history,
-                                         int maxFollowUp) {
+                                         int maxFollowUp, int questionCount) {
         // 简历面试：questionText 为空，使用专用 prompt
         if (currentQuestionText == null || currentQuestionText.isEmpty()) {
-            return buildResumeStreamUserPrompt(currentQuestion, userAnswer, remaining, history, maxFollowUp);
+            return buildResumeStreamUserPrompt(currentQuestion, userAnswer, remaining, history, maxFollowUp, questionCount);
         }
 
-        String prompt = "当前题目（第" + (currentQuestion + 1) + "题）：\n" + currentQuestionText +
+        int safeTotal = questionCount > 0 ? questionCount : (currentQuestion + remaining + 1);
+        boolean isLastQuestion = currentQuestion + 1 >= safeTotal;
+
+        String prompt = "当前进度：第 " + (currentQuestion + 1) + " 题 / 共 " + safeTotal + " 题" +
+                (isLastQuestion ? "（⚠️ 这是最后一题，没有下一题了）" : "") + "\n" +
+                "当前题目：\n" + currentQuestionText +
                 "\n\n候选人的回答：\n" + userAnswer +
                 "\n\n请：\n" +
                 "1) 先承接候选人的回答内容，用1-2句话真诚评价（具体指出亮点或不足，不要泛泛而谈）；\n" +
@@ -150,11 +161,15 @@ public class PromptBuilder {
             prompt += "   - 回答有关键遗漏或错误 → ⚠️ 必须追问当前题目，不得直接跳过（先认可已答部分，再引导补充或重新思考，引入新角度）\n";
         }
 
-        prompt += "   - 回答充分完整 → 自然过渡到下一题（用过渡语衔接，不要生硬说\"下一题\"）\n" +
-                "   - 所有题目已完成或连续2轮答不上来 → 结束面试（感谢候选人的时间）\n" +
+        if (isLastQuestion) {
+            prompt += "   - 当前是最后一题，回答充分或不需要继续追问 → 直接结束面试（不要说\"进入下一题\"\"下一题\"，因为没有下一题了）\n";
+        } else {
+            prompt += "   - 回答充分完整 → 自然过渡到下一题（用过渡语衔接，不要生硬说\"下一题\"）\n";
+        }
+        prompt += "   - 连续2轮答不上来 → 结束面试（感谢候选人的时间）\n" +
                 "3) 在回复的最后，单独用一行标记你的决定（不要包含在其他文字中）：\n" +
                 "   【决策: follow_up】  — 继续追问\n" +
-                "   【决策: next】       — 进入下一题\n" +
+                "   【决策: next】       — 进入下一题（仅当还有下一题时可用）\n" +
                 "   【决策: end】        — 结束面试\n\n" +
                 "【追问安全规则】\n" +
                 "1. 引用准则：追问必须引用候选人原话作为切入点，不编造技术名词\n" +
@@ -162,7 +177,24 @@ public class PromptBuilder {
                 "3. 不确定跳过：遇到不熟悉的概念用开放式提问代替具体追问\n" +
                 "4. 边界止损：同一题连续2轮追问答不好，直接进入下一题\n" +
                 "5. 【不重复】回顾对话历史中你已经问过的问题，不要重复问同样的话。每次追问必须比上一轮深入一层或引入新角度。回答不变时追问角度也必须变。\n" +
-                "   示例：第一轮问\"能展开说说吗？\" → 第二轮必须问新的方面，不能重复\"能展开说说吗？\"\n";
+"   示例：第一轮问\"能展开说说吗？\" → 第二轮必须问新的方面，不能重复\"能展开说说吗？\"\n" +
+"\n" +
+"⚠️ 【候选人放弃回答时的重要规则】\n" +
+"当候选人回答\"不知道\"\"不会\"\"不清楚\"\"没学过\"\"忘了\"\"不懂\"等表示不了解的内容时：\n" +
+"1. 绝对禁止在回复中给出正确答案、知识点讲解、原理说明或任何教学性内容（这是面试不是培训，泄露答案会破坏后续题目的区分度）\n" +
+"2. 只能用一句简短的话温和过渡，例如：\"没关系，这个知识点确实有点偏\" / \"嗯，这部分我们就不展开了\"\n" +
+"3. 然后直接选择【决策: next】或【决策: end】，不要在候选人放弃后继续追问这个话题\n" +
+"4. 即使候选人主动问\"那答案是什么？\"\"能讲讲吗？\"，也要委婉拒绝：\"这个我们面试结束后可以再交流\"\n\n";
+
+        // 最后一题强制 end 指令（最高优先级，覆盖前面的所有规则）
+        if (isLastQuestion) {
+            prompt += "\n【最高优先级指令 — 最后一题】\n" +
+                "⚠️ 当前是最后一题（第 " + (currentQuestion + 1) + " 题 / 共 " + safeTotal + " 题），已经没有下一题了。\n" +
+                "你必须选择【决策: end】结束面试，绝对禁止选择【决策: next】。\n" +
+                "回复中绝对不能出现\"进入下一题\"\"继续下一题\"\"下一题\"\"接下来是第\"等表述——因为根本没有下一题。\n" +
+                "正确做法：温和总结本次面试 + 感谢候选人时间 + 鼓励的话语 + 在最后一行写【决策: end】。\n" +
+                "此指令优先级最高，覆盖前面所有规则。\n";
+        }
 
         if (maxFollowUp <= 0) {
             prompt += "\n【最终指令 — 不追问模式】\n" +
@@ -170,7 +202,7 @@ public class PromptBuilder {
                 "⚠️ 回复中不能包含追问句式，必须用肯定+过渡的方式结束当前话题。这是最终指令，优先级高于所有其他规则。\n";
         }
 
-        if (remaining > 0 && !"follow_up".equals(getLastType(history))) {
+        if (remaining > 0 && !isLastQuestion && !"follow_up".equals(getLastType(history))) {
             prompt += "\n\n下一题题目供参考（如果你决定进入下一题）：\n" + nextQuestionText;
         }
         return prompt;
@@ -181,7 +213,10 @@ public class PromptBuilder {
      */
     private String buildResumeStreamUserPrompt(int currentQuestion, String userAnswer,
                                                 int remaining, List<Map<String, String>> history,
-                                                int maxFollowUp) {
+                                                int maxFollowUp, int questionCount) {
+        int safeTotal = questionCount > 0 ? questionCount : (currentQuestion + remaining + 1);
+        boolean isLastTopic = currentQuestion + 1 >= safeTotal;
+
         String prompt = "候选人的回答：\n" + userAnswer +
                 "\n\n请：\n" +
                 "1) 先承接候选人的回答内容，用1-2句话真诚评价（具体指出亮点或不足）；\n" +
@@ -194,15 +229,34 @@ public class PromptBuilder {
             prompt += "   - 回答有关键遗漏或错误 → ⚠️ 必须追问，不得直接跳过（先认可已答部分，再引导补充）\n";
         }
 
-        prompt += "   - 回答充分完整 → 自然过渡到下一个简历相关话题\n" +
-                "   - 所有话题已覆盖或连续2轮答不上来 → 结束面试\n" +
+        if (isLastTopic) {
+            prompt += "   - 当前是最后一个话题，回答充分或不需要继续追问 → 直接结束面试（不要说\"进入下一题\"\"下一题\"，因为没有下一个话题了）\n";
+        } else {
+            prompt += "   - 回答充分完整 → 自然过渡到下一个简历相关话题\n";
+        }
+        prompt += "   - 所有话题已覆盖或连续2轮答不上来 → 结束面试\n" +
                 "3) 在回复的最后，单独用一行标记你的决定（不可省略）：\n" +
                 "   【决策: type=follow_up, nextQ=" + currentQuestion + "】  — 继续追问\n" +
                 "   【决策: type=next, nextQ=" + (currentQuestion + 1) + "】       — 进入下一个话题\n" +
                 "   【决策: type=end, nextQ=" + currentQuestion + "】        — 结束面试\n\n" +
                 "⚠️ 决策标记必须出现在回复末尾，格式为【决策: type=xxx, nextQ=xxx】，不可省略！\n\n" +
-                "【注意】你是简历面试模式，请根据候选人的简历内容选择下一个话题，不要使用题库题目。\n" +
-                "当前已进行到第 " + (currentQuestion + 1) + " 个话题，还剩 " + remaining + " 个话题。\n";
+                "【注意】你是简历面试模式，请根据候选人的简历内容选择下一个话题，不要使用题库题目。\n";
+
+        if (isLastTopic) {
+            prompt += "当前进度：第 " + (currentQuestion + 1) + " 个话题 / 共 " + safeTotal + " 个话题（⚠️ 这是最后一个话题，没有下一个了）\n";
+        } else {
+            prompt += "当前已进行到第 " + (currentQuestion + 1) + " 个话题，还剩 " + (safeTotal - currentQuestion - 1) + " 个话题。\n";
+        }
+
+        // 最后一题强制 end 指令（最高优先级，覆盖前面的所有规则）
+        if (isLastTopic) {
+            prompt += "\n【最高优先级指令 — 最后一题】\n" +
+                "⚠️ 当前是最后一个话题（第 " + (currentQuestion + 1) + " 个 / 共 " + safeTotal + " 个），已经没有下一个话题了。\n" +
+                "你必须选择【决策: type=end, ...】结束面试，绝对禁止选择【决策: type=next, ...】。\n" +
+                "回复中绝对不能出现\"进入下一题\"\"继续下一题\"\"下一题\"\"下一个话题\"等表述——因为没有下一个话题了。\n" +
+                "正确做法：温和总结本次面试 + 感谢候选人时间 + 鼓励的话语 + 在最后一行写【决策: type=end, nextQ=" + currentQuestion + "】。\n" +
+                "此指令优先级最高，覆盖前面所有规则。\n";
+        }
 
         if (maxFollowUp <= 0) {
             prompt += "\n【最终指令 — 不追问模式】\n" +

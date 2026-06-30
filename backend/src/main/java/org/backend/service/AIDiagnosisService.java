@@ -2,6 +2,7 @@ package org.backend.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.backend.entity.*;
+import org.backend.vo.DiagnosisDataVO;
 import org.backend.exception.BusinessException;
 import org.backend.mapper.*;
 import org.backend.util.AIService;

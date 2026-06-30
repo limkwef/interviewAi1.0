@@ -2,7 +2,7 @@ package org.backend.controller;
 
 import org.backend.common.Result;
 import org.backend.entity.Resume;
-import org.backend.entity.ResumeData;
+import org.backend.vo.ResumeData;
 import org.backend.service.ResumeService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;

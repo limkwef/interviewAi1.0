@@ -2,8 +2,8 @@ package org.backend.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.backend.common.Result;
-import org.backend.entity.LearningPathVO;
-import org.backend.entity.ProgressStatsVO;
+import org.backend.vo.LearningPathVO;
+import org.backend.vo.ProgressStatsVO;
 import org.backend.service.LearningPathService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;

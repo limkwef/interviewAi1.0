@@ -1,13 +1,13 @@
 package org.backend.service;
 
-import org.backend.entity.CheckAnswerVO;
+import org.backend.vo.CheckAnswerVO;
 import org.backend.entity.MistakeAnswerDetail;
-import org.backend.entity.MistakeDetailVO;
-import org.backend.entity.MistakeListVO;
+import org.backend.vo.MistakeDetailVO;
+import org.backend.vo.MistakeListVO;
 import org.backend.entity.MistakeRecord;
-import org.backend.entity.MistakeStatsVO;
+import org.backend.vo.MistakeStatsVO;
 import org.backend.entity.Question;
-import org.backend.entity.WrongAnswerDTO;
+import org.backend.dto.WrongAnswerDTO;
 import org.backend.exception.BusinessException;
 import org.backend.mapper.MistakeMapper;
 import org.backend.mapper.QuestionMapper;

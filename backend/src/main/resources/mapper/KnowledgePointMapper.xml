@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.KnowledgePointMapper">
+
+    <resultMap id="knowledgePointResultMap" type="org.backend.entity.KnowledgePoint">
+        <id property="id" column="id"/>
+        <result property="category" column="category"/>
+        <result property="keyword" column="keyword"/>
+        <result property="content" column="content"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="findByKeyword" resultMap="knowledgePointResultMap">
+        SELECT id, category, keyword, content, difficulty, create_time
+        FROM knowledge_point
+        WHERE (keyword LIKE CONCAT('%', #{keyword}, '%')
+               OR content LIKE CONCAT('%', #{keyword}, '%'))
+        <if test="category != null and category != ''">
+            AND category = #{category}
+        </if>
+        ORDER BY
+            CASE WHEN keyword = #{keyword} THEN 0
+                 WHEN keyword LIKE CONCAT(#{keyword}, '%') THEN 1
+                 ELSE 2 END,
+            id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findByCategory" resultMap="knowledgePointResultMap">
+        SELECT id, category, keyword, content, difficulty, create_time
+        FROM knowledge_point
+        WHERE category = #{category}
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_point (category, keyword, content, difficulty)
+        VALUES (#{category}, #{keyword}, #{content}, #{difficulty})
+    </insert>
+
+    <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_point (category, keyword, content, difficulty)
+        VALUES
+        <foreach collection="list" item="kp" separator=",">
+            (#{kp.category}, #{kp.keyword}, #{kp.content}, #{kp.difficulty})
+        </foreach>
+    </insert>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM knowledge_point
+    </select>
+
+</mapper>

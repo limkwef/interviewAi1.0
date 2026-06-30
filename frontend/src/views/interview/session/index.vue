@@ -35,7 +35,7 @@
             </span>
           </div>
         </div>
-        <button class="end-btn" @click="handleEndInterview" :disabled="ending">
+        <button class="end-btn" @click="handleEndInterview" :disabled="ending || sending">
           {{ ending ? '结束中...' : '结束面试' }}
         </button>
         <button class="mute-btn" @click="ttsMuted = !ttsMuted" :title="ttsMuted ? '开启语音' : '静音'">
@@ -116,7 +116,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, onDeactivated } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
-import { getSessionMessages, getSessionInfo, sendMessage, sendMessageStream, endInterview, abandonInterview, pollStreamStatus, getReportStatus } from '@/api/interview'
+import { getSessionMessages, getSessionInfo, sendMessage, endInterview, abandonInterview, getReportStatus } from '@/api/interview'
 import { submitReportDurations } from '@/api/interview'
 import { useInterviewStore } from '@/stores/interview'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -147,7 +147,6 @@ const lastAiMessageId = ref(null)     // 最后一条 AI 消息 ID
 const ttsMuted = ref(false)           // 全局静音状态
 const activeTtsId = ref(null)         // 当前正在播放 TTS 的消息 ID
 const lastKeyWasEnter = ref(false)    // 上一次按键是否为 Enter
-const pollingTimer = ref(null)        // 轮询降级定时器
 
 // ======================== 计时器逻辑 ========================
 const startTimestamp = ref(0)
@@ -323,7 +322,6 @@ watch(sessionId, async (newId, oldId) => {
     currentQuestionElapsed.value = 0
     questionDurations.value = {}
     stopTimers()
-    stopPolling()
     // 重新加载
     await Promise.all([loadMessages(), loadSessionInfo()])
     startTimers()
@@ -333,16 +331,14 @@ watch(sessionId, async (newId, oldId) => {
 onBeforeUnmount(() => {
   isUnmounted.value = true
   stopTimers()
-  stopPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   setInterviewState(false)
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
-// keep-alive 下离开面试页时停止轮询和计时
+// keep-alive 下离开面试页时停止计时
 onDeactivated(() => {
   stopTimers()
-  stopPolling()
 })
 
 // 组件是否已卸载的标记
@@ -492,194 +488,41 @@ async function doSend(content, isRetry = false) {
   streamingContent.value = ''
   sendingRetry.value = isRetry
 
-  // 先尝试流式 SSE
-  let success = false
-  let requestSent = false  // 标记请求是否已到达后端，防止重复生成 AI 回复
   try {
-    requestSent = true
-    const meta = await sendMessageStream(
-      sessionId.value,
-      content,
-      (chunk) => {
-        streamingContent.value += chunk
-        nextTick(() => scrollToBottom())
+    const res = await sendMessage(sessionId.value, content)
+    if (res.code === 200) {
+      messages.value.push({
+        id: res.data.id,
+        role: 'ai',
+        content: res.data.content,
+        messageType: res.data.type || 'next_question',
+        createdAt: res.data.createdAt
+      })
+      lastMessageType.value = res.data.type || ''
+      if (res.data.messageId) {
+        lastAiMessageId.value = res.data.messageId
       }
-    )
-    // 流式成功
-    messages.value.push({
-      id: meta.messageId || Date.now(),
-      role: 'ai',
-      content: meta.content || streamingContent.value,
-      messageType: meta.type || 'next_question',
-      createdAt: new Date().toISOString()
-    })
-    streamingContent.value = ''
-    sending.value = false
-    lastMessageType.value = meta.type || ''
-    if (meta.messageId) {
-      lastAiMessageId.value = meta.messageId
+      if (res.data.type === 'next_question') {
+        recordQuestionDuration()
+      }
+      if (session.value && res.data.nextQuestion) {
+        session.value.currentQuestion = res.data.nextQuestion
+      }
+      if (res.data.type === 'end' || (session.value && session.value.currentQuestion >= session.value.questionCount)) {
+        stopTimers()
+      }
+      await nextTick()
+      scrollToBottom()
+    } else {
+      ElMessage.error(res.message || '发送失败，请重试')
+      retryContent.value = content
     }
-    if (meta.type === 'next_question') {
-      recordQuestionDuration()
-    }
-    if (session.value && meta.nextQuestion) {
-      session.value.currentQuestion = meta.nextQuestion
-    }
-    // 面试结束时停止计时器（type=end 或所有题目已答完）
-    if (meta.type === 'end' || (session.value && session.value.currentQuestion >= session.value.questionCount)) {
-      stopTimers()
-    }
-    success = true
-    await nextTick()
-    scrollToBottom()
   } catch {
-    // SSE 断开 → 自动降级为轮询（不重发 POST，避免后端重复生成 AI 回复）
-    success = await startPollingFallback(content)
-  }
-
-  // 轮询也失败 → 只有在请求未到达后端时才降级到普通 POST
-  if (!success && !requestSent) {
-    try {
-      const res = await sendMessage(sessionId.value, content)
-      if (res.code === 200) {
-        messages.value.push({
-          id: res.data.id,
-          role: 'ai',
-          content: res.data.content,
-          messageType: res.data.type || 'next_question',
-          createdAt: res.data.createdAt
-        })
-        lastMessageType.value = res.data.type || ''
-        if (session.value && res.data.nextQuestion) {
-          session.value.currentQuestion = res.data.nextQuestion
-        }
-        // 面试结束时停止计时器
-        if (res.data.type === 'end' || (session.value && session.value.currentQuestion >= session.value.questionCount)) {
-          stopTimers()
-        }
-        success = true
-        await nextTick()
-        scrollToBottom()
-      }
-    } catch {
-      // POST 也失败
-    }
-  }
-
-  if (!success) {
-    // 全部失败，设置重试
     ElMessage.error('发送失败，请重试')
     retryContent.value = content
-  }
-
-  sending.value = false
-  sendingRetry.value = false
-}
-
-/**
- * SSE 断开后的轮询降级：定时查询后端 poll 接口，逐步获取 AI 回复
- * 返回 true 表示成功获取到完整回复
- */
-async function startPollingFallback(content) {
-  stopPolling()
-  let lastContent = ''
-  let pollCount = 0
-  const MAX_POLL_COUNT = 120 // 最多轮询 120 次（约 2 分钟）
-  const POLL_INTERVAL = 1000 // 1 秒轮询一次
-
-  return new Promise((resolve) => {
-    pollingTimer.value = setInterval(async () => {
-      // 组件已卸载，停止轮询
-      if (isUnmounted.value) {
-        stopPolling()
-        resolve(false)
-        return
-      }
-
-      pollCount++
-      if (pollCount > MAX_POLL_COUNT) {
-        stopPolling()
-        resolve(false)
-        return
-      }
-
-      // sessionId 可能已变为 undefined（组件卸载后）
-      const currentSessionId = sessionId.value
-      if (!currentSessionId) {
-        stopPolling()
-        resolve(false)
-        return
-      }
-
-      try {
-        const res = await pollStreamStatus(currentSessionId)
-        if (res.code !== 200) {
-          stopPolling()
-          resolve(false)
-          return
-        }
-
-        const data = res.data
-        if (data.status === 'pending') {
-          // AI 还没开始生成，继续等待
-          return
-        }
-
-        if (data.status === 'streaming') {
-          // 仍在生成中，更新展示内容
-          if (data.content && data.content !== lastContent) {
-            lastContent = data.content
-            streamingContent.value = data.content
-            await nextTick()
-            if (!isUnmounted.value) {
-              scrollToBottom()
-            }
-          }
-          return
-        }
-
-        if (data.status === 'completed') {
-          // 生成完成
-          stopPolling()
-          streamingContent.value = ''
-          messages.value.push({
-            id: data.messageId || Date.now(),
-            role: 'ai',
-            content: data.content,
-            messageType: data.type || 'next_question',
-            createdAt: new Date().toISOString()
-          })
-          lastMessageType.value = data.type || ''
-          if (data.messageId) {
-            lastAiMessageId.value = data.messageId
-          }
-          if (data.type === 'next_question') {
-            recordQuestionDuration()
-          }
-          // 面试结束时停止计时器
-          if (data.type === 'end') {
-            stopTimers()
-          }
-          if (session.value && data.nextQuestion) {
-            session.value.currentQuestion = data.nextQuestion
-          }
-          await nextTick()
-          if (!isUnmounted.value) {
-            scrollToBottom()
-          }
-          resolve(true)
-        }
-      } catch {
-        // 轮询请求失败，继续尝试
-      }
-    }, POLL_INTERVAL)
-  })
-}
-
-function stopPolling() {
-  if (pollingTimer.value) {
-    clearInterval(pollingTimer.value)
-    pollingTimer.value = null
+  } finally {
+    sending.value = false
+    sendingRetry.value = false
   }
 }
 
@@ -699,6 +542,7 @@ function handleVoiceResult(result) {
 }
 
 async function handleEndInterview() {
+  if (ending.value || sending.value) return
   ending.value = true
   try {
     const res = await endInterview(sessionId.value)
@@ -726,7 +570,7 @@ async function handleEndInterview() {
       ElMessage.error(res.message || '结束面试失败')
     }
   } catch (e) {
-    ElMessage.error('结束面试失败')
+    ElMessage.error(e.response?.data?.message || e.message || '结束面试失败')
   } finally {
     ending.value = false
   }
@@ -937,6 +781,13 @@ function formatTime(dateStr) {
   white-space: nowrap;
   font-weight: 500;
   flex-shrink: 0;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #ccc;
+    color: #ccc;
+  }
 }
 
 .mute-btn {

@@ -84,27 +84,19 @@ public class QuestionSelector {
             }
         }
 
-        // 3. 仍然不够 → 取消限制兜底
+        // 3. 仍然不够 → 放宽去重限制（允许重复，但不跨方向）
         if (result.size() < total) {
             int need = total - result.size();
             Set<Long> usedIds = result.stream().map(Question::getId).collect(Collectors.toSet());
-            usedIds.addAll(recentIds);
-            List<Long> excludeList = new ArrayList<>(usedIds);
 
             List<Question> supplement;
             if (isHR) {
-                supplement = shuffleAndFetch(questionMapper.findIdsByCategoryWithExclusion(category, excludeList),
-                        Collections.emptySet(), need + 5);
-                if (supplement.size() < need) {
-                    supplement = shuffleAndFetch(questionMapper.findIdsByCategory(category),
-                            result.stream().map(Question::getId).collect(Collectors.toSet()), need + 5);
-                }
+                supplement = shuffleAndFetch(questionMapper.findIdsByCategory(category),
+                        usedIds, need + 5);
             } else {
-                supplement = shuffleAndFetch(questionMapper.findIdsByDirectionWithExclusion(direction, excludeList),
-                        Collections.emptySet(), need + 5);
-                if (supplement.size() < need) {
-                    supplement = shuffleAndFetch(questionMapper.findIdsByDirection(null), usedIds, need + 10);
-                }
+                // 只在同方向内补题，不跨方向（避免前端面试出后端题）
+                supplement = shuffleAndFetch(questionMapper.findIdsByDirection(direction),
+                        usedIds, need + 5);
             }
             int take = Math.min(need, supplement.size());
             result.addAll(new ArrayList<>(supplement.subList(0, take)));

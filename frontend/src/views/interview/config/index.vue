@@ -79,6 +79,18 @@
           </p>
         </div>
         <div class="form-group">
+          <label class="form-label">AI 模型</label>
+          <div class="select-wrapper">
+            <select v-model="config.modelId" class="form-select">
+              <option :value="null">默认模型</option>
+              <option v-for="m in aiModels" :key="m.id" :value="m.id">
+                {{ m.modelName }}{{ m.isDefault ? ' (默认)' : '' }}{{ m.userId ? ' (我的)' : '' }}
+              </option>
+            </select>
+          </div>
+          <p class="count-tip">选择不同的 AI 模型进行面试，可在<a href="/settings/models" style="color: #409EFF;">个人设置</a>中管理自己的模型</p>
+        </div>
+        <div class="form-group">
           <label class="form-label">每题追问次数</label>
           <div class="count-control">
             <button class="count-btn" @click="config.maxFollowUp = Math.max(0, config.maxFollowUp - 1)" :disabled="config.maxFollowUp <= 0">-</button>
@@ -102,6 +114,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { createInterview } from '@/api/interview'
 import { getQuestionCount } from '@/api/question'
 import { getResumeList } from '@/api/resume'
+import { getEnabledModels } from '@/api/aiModel'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -109,6 +122,7 @@ const route = useRoute()
 const loading = ref(false)
 const availableCount = ref(0)
 const hasActiveResume = ref(false)
+const aiModels = ref([])
 
 const config = reactive({
   interviewType: 'normal',
@@ -116,7 +130,8 @@ const config = reactive({
   round: '',
   difficulty: 'medium',
   questionCount: 5,
-  maxFollowUp: 4
+  maxFollowUp: 4,
+  modelId: null
 })
 
 // 从路由参数初始化配置（如从首页快速开始跳转）
@@ -138,6 +153,17 @@ onMounted(async () => {
     }
   } catch (e) {
     console.error('获取简历列表失败:', e)
+  }
+  // 获取可用AI模型列表
+  try {
+    const res = await getEnabledModels()
+    if (res.code === 200 && res.data) {
+      aiModels.value = res.data
+      const defaultModel = res.data.find(m => m.isDefault === 1)
+      if (defaultModel) config.modelId = defaultModel.id
+    }
+  } catch (e) {
+    console.error('获取AI模型列表失败:', e)
   }
 })
 
@@ -201,7 +227,8 @@ async function startInterview() {
       round: config.round,
       difficulty: config.difficulty,
       questionCount: config.questionCount,
-      maxFollowUp: config.maxFollowUp
+      maxFollowUp: config.maxFollowUp,
+      modelId: config.modelId
     })
     if (res.code === 200) {
       router.push(`/interview/session/${res.data.id}`)
@@ -482,6 +509,56 @@ async function startInterview() {
   animation: spin 0.6s linear infinite;
 }
 
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+
+  input { opacity: 0; width: 0; height: 0; }
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #dcdfe6;
+  border-radius: 24px;
+  transition: 0.3s;
+
+  &::before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: 0.3s;
+  }
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: $accent-color;
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
+.toggle-label {
+  font-size: 14px;
+  color: $text-secondary;
+}
 
 @media (max-width: 768px) {
   .config-body { padding: 20px; }

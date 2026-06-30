@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.AgentMemoryMapper">
+
+    <resultMap id="memoryResultMap" type="org.backend.entity.AgentMemory">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="memoryType" column="memory_type"/>
+        <result property="content" column="content"/>
+        <result property="sourceSessionId" column="source_session_id"/>
+        <result property="confidence" column="confidence"/>
+        <result property="accessCount" column="access_count"/>
+        <result property="lastAccessedAt" column="last_accessed_at"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_memory (user_id, memory_type, content, source_session_id, confidence)
+        VALUES (#{userId}, #{memoryType}, #{content}, #{sourceSessionId}, #{confidence})
+    </insert>
+
+    <select id="findRecentByUserId" resultMap="memoryResultMap">
+        SELECT * FROM agent_memory
+        WHERE user_id = #{userId}
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findByUserIdAndType" resultMap="memoryResultMap">
+        SELECT * FROM agent_memory
+        WHERE user_id = #{userId} AND memory_type = #{memoryType}
+        ORDER BY confidence DESC, create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <update id="incrementAccessCount">
+        UPDATE agent_memory
+        SET access_count = access_count + 1, last_accessed_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteOldMemories">
+        DELETE FROM agent_memory
+        WHERE user_id = #{userId}
+          AND id NOT IN (
+              SELECT id FROM (
+                  SELECT id FROM agent_memory
+                  WHERE user_id = #{userId}
+                  ORDER BY confidence DESC, create_time DESC
+                  LIMIT #{keepCount}
+              ) AS keep_ids
+          )
+    </delete>
+
+</mapper>

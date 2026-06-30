@@ -2,9 +2,9 @@ package org.backend.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.backend.entity.CompetitiveAnalysis;
-import org.backend.entity.DimensionVO;
-import org.backend.entity.ImprovementPredictionVO;
+import org.backend.vo.CompetitiveAnalysis;
+import org.backend.vo.DimensionVO;
+import org.backend.vo.ImprovementPredictionVO;
 import org.backend.entity.InterviewReport;
 import org.backend.entity.InterviewSession;
 import org.backend.entity.User;

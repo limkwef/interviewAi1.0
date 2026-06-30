@@ -106,7 +106,20 @@
       </div>
     </div>
 
-    <div class="table-container">
+    <!-- 空状态引导 -->
+    <div v-if="!loading && mistakeList.length === 0 && pagination.total === 0" class="empty-guide">
+      <div class="empty-guide__icon">
+        <el-icon :size="64"><Document /></el-icon>
+      </div>
+      <h3 class="empty-guide__title">暂无错题记录</h3>
+      <p class="empty-guide__desc">完成模拟面试后，答错的题目会自动收录到这里</p>
+      <el-button type="primary" size="large" @click="$router.push('/interview/config')">
+        <el-icon><VideoPlay /></el-icon>
+        开始面试
+      </el-button>
+    </div>
+
+    <div v-else class="table-container">
       <div v-if="selectedIds.length > 0" class="batch-bar">
         <span class="batch-bar__info">已选 <strong>{{ selectedIds.length }}</strong> 项</span>
         <div class="batch-bar__actions">
@@ -224,7 +237,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, RefreshRight, Refresh, Warning, CircleCheck, Document, TrendCharts } from '@element-plus/icons-vue'
+import { Search, RefreshRight, Refresh, Warning, CircleCheck, Document, TrendCharts, VideoPlay } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { categoryMap } from '@/utils/constants'
 
@@ -806,6 +819,36 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   padding: 20px 0;
+}
+
+// 空状态引导
+.empty-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  background: #fff;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+
+  &__icon {
+    color: #D1D5DB;
+    margin-bottom: 24px;
+  }
+
+  &__title {
+    font-size: 18px;
+    font-weight: 600;
+    color: $text-primary;
+    margin: 0 0 8px;
+  }
+
+  &__desc {
+    font-size: 14px;
+    color: $text-secondary;
+    margin: 0 0 24px;
+  }
 }
 
 :deep(.el-table) {

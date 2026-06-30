@@ -33,10 +33,10 @@ const routes = [
         redirect: '/resume/list',
         meta: { title: '简历管理', icon: 'Files' },
         children: [
-          { path: 'list', name: 'ResumeList', component: () => import('@/views/resume/ResumeList.vue'), meta: { title: '简历列表' } },
-          { path: 'upload', name: 'ResumeUpload', component: () => import('@/views/resume/ResumeUpload.vue'), meta: { title: '上传简历' } },
-          { path: 'create', name: 'ResumeCreate', component: () => import('@/views/resume/ResumeForm.vue'), meta: { title: '在线填写' } },
-          { path: 'detail/:id', name: 'ResumeDetail', component: () => import('@/views/resume/ResumeDetail.vue'), meta: { title: '简历详情', hidden: true } }
+          { path: 'list', name: 'ResumeList', component: () => import('@/views/resume-manage/ResumeList.vue'), meta: { title: '简历列表' } },
+          { path: 'upload', name: 'ResumeUpload', component: () => import('@/views/resume-manage/ResumeUpload.vue'), meta: { title: '上传简历' } },
+          { path: 'create', name: 'ResumeCreate', component: () => import('@/views/resume-manage/ResumeForm.vue'), meta: { title: '在线填写' } },
+          { path: 'detail/:id', name: 'ResumeDetail', component: () => import('@/views/resume-manage/ResumeDetail.vue'), meta: { title: '简历详情', hidden: true } }
         ]
       },
       {
@@ -69,8 +69,17 @@ const routes = [
           { path: 'dashboard', name: 'AdminDashboard', component: () => import('@/views/admin/dashboard/index.vue'), meta: { title: '管理首页', requiresAdmin: true } },
           { path: 'users', name: 'AdminUsers', component: () => import('@/views/admin/users/index.vue'), meta: { title: '用户管理', requiresAdmin: true } },
           { path: 'questions', name: 'AdminQuestions', component: () => import('@/views/admin/questions/index.vue'), meta: { title: '题库管理', requiresAdmin: true } },
+          { path: 'ai-model', name: 'AdminAiModel', component: () => import('@/views/admin/ai-model/index.vue'), meta: { title: 'AI模型管理', requiresAdmin: true } },
           { path: 'logs', name: 'AdminLogs', component: () => import('@/views/admin/logs/index.vue'), meta: { title: '操作日志', requiresAdmin: true } },
           { path: 'feedback', name: 'AdminFeedback', component: () => import('@/views/admin/feedback/index.vue'), meta: { title: '反馈管理', requiresAdmin: true } }
+        ]
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        meta: { title: '个人设置', icon: 'UserFilled' },
+        children: [
+          { path: 'models', name: 'UserModels', component: () => import('@/views/settings/models/index.vue'), meta: { title: '我的模型' } }
         ]
       },
       { path: 'profile', name: 'Profile', component: () => import('@/views/profile/index.vue'), meta: { title: '个人中心', icon: 'User', hidden: true } }

@@ -14,6 +14,7 @@
         <result property="questionIds" column="question_ids"/>
         <result property="resumeId" column="resume_id"/>
         <result property="interviewType" column="interview_type"/>
+        <result property="modelId" column="model_id"/>
         <result property="status" column="status"/>
         <result property="evaluateStatus" column="evaluate_status"/>
         <result property="evaluateError" column="evaluate_error"/>
@@ -47,6 +48,10 @@
         UPDATE interview_session SET evaluate_status = #{evaluateStatus}, evaluate_error = #{evaluateError},
                                      report_id = #{reportId}, evaluate_retry_count = #{evaluateRetryCount}
         WHERE id = #{id}
+    </update>
+
+    <update id="updateDifficulty">
+        UPDATE interview_session SET difficulty = #{difficulty}, updated_at = NOW() WHERE id = #{id}
     </update>
 
     <select id="findById" resultMap="sessionResultMap">

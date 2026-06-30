@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.backend.mapper.AiModelMapper">
+
+    <resultMap id="modelResultMap" type="org.backend.entity.AiModel">
+        <id property="id" column="id"/>
+        <result property="modelName" column="model_name"/>
+        <result property="modelCode" column="model_code"/>
+        <result property="provider" column="provider"/>
+        <result property="apiUrl" column="api_url"/>
+        <result property="apiKey" column="api_key"/>
+        <result property="maxTokens" column="max_tokens"/>
+        <result property="temperature" column="temperature"/>
+        <result property="supportsStream" column="supports_stream"/>
+        <result property="supportsStructured" column="supports_structured"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="isEnabled" column="is_enabled"/>
+        <result property="description" column="description"/>
+        <result property="userId" column="user_id"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.backend.entity.AiModel" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_model (model_name, model_code, provider, api_url, api_key, max_tokens, temperature,
+                              supports_stream, supports_structured, is_default, is_enabled, description, user_id, sort_order)
+        VALUES (#{modelName}, #{modelCode}, #{provider}, #{apiUrl}, #{apiKey}, #{maxTokens}, #{temperature},
+                #{supportsStream}, #{supportsStructured}, #{isDefault}, #{isEnabled}, #{description}, #{userId}, #{sortOrder})
+    </insert>
+
+    <update id="update" parameterType="org.backend.entity.AiModel">
+        UPDATE ai_model
+        SET model_name = #{modelName}, model_code = #{modelCode}, provider = #{provider},
+            api_url = #{apiUrl}, api_key = #{apiKey}, max_tokens = #{maxTokens}, temperature = #{temperature},
+            supports_stream = #{supportsStream}, supports_structured = #{supportsStructured},
+            is_default = #{isDefault}, is_enabled = #{isEnabled}, description = #{description},
+            sort_order = #{sortOrder}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 用户端：获取用户自己的模型 + 系统模型 -->
+    <select id="findByUserId" resultMap="modelResultMap">
+        SELECT * FROM ai_model WHERE user_id = #{userId} OR user_id IS NULL ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <!-- 用户端：获取用户自己的启用模型 + 系统启用模型 -->
+    <select id="findEnabledByUserId" resultMap="modelResultMap">
+        SELECT * FROM ai_model WHERE is_enabled = 1 AND (user_id = #{userId} OR user_id IS NULL) ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM ai_model WHERE id = #{id}
+    </delete>
+
+    <select id="findById" resultMap="modelResultMap">
+        SELECT * FROM ai_model WHERE id = #{id}
+    </select>
+
+    <select id="findDefault" resultMap="modelResultMap">
+        SELECT * FROM ai_model WHERE is_default = 1 AND is_enabled = 1 LIMIT 1
+    </select>
+
+    <select id="findAll" resultMap="modelResultMap">
+        SELECT * FROM ai_model ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findEnabled" resultMap="modelResultMap">
+        SELECT * FROM ai_model WHERE is_enabled = 1 ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <update id="setDefault">
+        UPDATE ai_model SET is_default = CASE WHEN id = #{id} THEN 1 ELSE 0 END
+    </update>
+
+    <update id="clearDefault">
+        UPDATE ai_model SET is_default = 0
+    </update>
+
+</mapper>

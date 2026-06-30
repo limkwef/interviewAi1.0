@@ -270,7 +270,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt 包含决策标记指令")
         void buildStreamUserPrompt_shouldContainDecisionMarker() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2, 5);
 
             assertTrue(prompt.contains("【决策: follow_up】"), "应包含 follow_up 决策标记");
             assertTrue(prompt.contains("【决策: next】"), "应包含 next 决策标记");
@@ -281,7 +281,7 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt 有剩余题目且非追问时，包含下一题")
         void buildStreamUserPrompt_shouldIncludeNextQuestion() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2, 5);
 
             assertTrue(prompt.contains("下一题题目供参考"), "有剩余题目时应包含下一题提示");
             assertTrue(prompt.contains("什么是GC?"), "应包含下一题内容");
@@ -294,7 +294,7 @@ class CodeReviewRegressionTest {
             history.add(Map.of("role", "assistant", "content", "test", "type", "follow_up"));
 
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, history, 2);
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, history, 2, 5);
 
             assertFalse(prompt.contains("下一题题目供参考"), "追问状态不应包含下一题提示");
         }
@@ -312,9 +312,114 @@ class CodeReviewRegressionTest {
         @DisplayName("buildStreamUserPrompt（流式）不要求 JSON 格式")
         void buildStreamUserPrompt_shouldNotRequireJsonFormat() {
             String prompt = promptBuilder.buildStreamUserPrompt(
-                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2);
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2, 5);
 
             assertFalse(prompt.contains("JSON"), "流式 prompt 不应要求 JSON 格式");
+        }
+
+        @Test
+        @DisplayName("buildStreamUserPrompt 最后一题：强制 end 指令，不包含下一题参考")
+        void buildStreamUserPrompt_lastQuestion_shouldForceEnd() {
+            // currentQuestion=4, questionCount=5 → 4+1>=5，是最后一题
+            String prompt = promptBuilder.buildStreamUserPrompt(
+                    4, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 1, Collections.emptyList(), 2, 5);
+
+            assertTrue(prompt.contains("最高优先级指令"), "最后一题应包含强制 end 指令");
+        }
+
+        @Test
+        @DisplayName("buildStreamUserPrompt 包含候选人放弃回答时不给答案的规则")
+        void buildStreamUserPrompt_shouldContainNoAnswerRule() {
+            String prompt = promptBuilder.buildStreamUserPrompt(
+                    1, "什么是JVM?", "JVM是虚拟机", "什么是GC?", 3, Collections.emptyList(), 2, 5);
+
+            assertTrue(prompt.contains("绝对禁止在回复中给出正确答案"), "应明确禁止给出正确答案");
+        }
+
+        @Test
+        @DisplayName("buildInterviewSystemPrompt 包含面试不是培训的绝对禁止规则")
+        void buildInterviewSystemPrompt_shouldContainNoTrainingRule() {
+            String prompt = promptBuilder.buildInterviewSystemPrompt(
+                    "java_backend", "technical", "medium", 5, "", 2);
+
+            assertTrue(prompt.contains("绝对禁止规则"), "应包含绝对禁止规则标题");
+            assertTrue(prompt.contains("面试不是培训"), "应强调面试不是培训");
+        }
+    }
+
+    // ==================== BugFix: 面试提前结束 + AI 跳出答案 ====================
+    @Nested
+    @DisplayName("BugFix: 决策类型边界保护（面试提前结束修复）")
+    class DecisionBoundaryTest {
+
+        private final org.backend.util.ScoringEngine engine = new org.backend.util.ScoringEngine();
+
+        @Test
+        @DisplayName("最后一题：AI 返回 next_question 时强制转为 end")
+        void lastQuestion_nextQuestion_shouldForceEnd() {
+            String result = engine.enforceDecisionBoundary("next_question", 1, 2, 1);
+            assertEquals("end", result, "最后一题 next_question 必须转为 end");
+        }
+
+        @Test
+        @DisplayName("最后一题：AI 返回 end 时保持 end")
+        void lastQuestion_end_shouldStayEnd() {
+            String result = engine.enforceDecisionBoundary("end", 1, 2, 1);
+            assertEquals("end", result, "最后一题的 end 应保持 end");
+        }
+
+        @Test
+        @DisplayName("非最后一题：AI 返回 end 时降级为 next_question")
+        void nonLastQuestion_end_shouldDowngradeToNextQuestion() {
+            String result = engine.enforceDecisionBoundary("end", 1, 5, 4);
+            assertEquals("next_question", result, "非最后一题的 end 应降级为 next_question");
+        }
+
+        @Test
+        @DisplayName("非最后一题：AI 返回 next_question 时保持 next_question")
+        void nonLastQuestion_nextQuestion_shouldStayNextQuestion() {
+            String result = engine.enforceDecisionBoundary("next_question", 1, 5, 4);
+            assertEquals("next_question", result, "非最后一题的 next_question 应保持不变");
+        }
+
+        @Test
+        @DisplayName("follow_up 类型不受边界保护影响")
+        void followUp_shouldNotBeAffected() {
+            assertEquals("follow_up", engine.enforceDecisionBoundary("follow_up", 1, 2, 1));
+            assertEquals("follow_up", engine.enforceDecisionBoundary("follow_up", 0, 5, 5));
+        }
+
+        @Test
+        @DisplayName("answer 类型不受边界保护影响")
+        void answer_shouldNotBeAffected() {
+            assertEquals("answer", engine.enforceDecisionBoundary("answer", 1, 2, 1));
+        }
+
+        @Test
+        @DisplayName("无剩余题目：任何类型都强制转为 end")
+        void noRemaining_shouldForceEnd() {
+            assertEquals("end", engine.enforceDecisionBoundary("next_question", 5, 5, 0));
+            assertEquals("end", engine.enforceDecisionBoundary("follow_up", 5, 5, 0));
+            assertEquals("end", engine.enforceDecisionBoundary("end", 5, 5, 0));
+        }
+
+        @Test
+        @DisplayName("null 类型降级为 next_question 后再应用边界保护")
+        void nullType_shouldDefaultAndApplyBoundary() {
+            assertEquals("next_question", engine.enforceDecisionBoundary(null, 0, 5, 5));
+            assertEquals("end", engine.enforceDecisionBoundary(null, 1, 2, 1));
+        }
+
+        @Test
+        @DisplayName("复现用户 bug 场景：2 题面试，第 2 题 AI 返回 next 应转为 end")
+        void reproduceUserBug_2Questions_lastQuestionNextShouldBeEnd() {
+            String type = "next_question";
+            int currentQuestion = 1;
+            int totalQuestions = 2;
+            int remaining = 1;
+            String result = engine.enforceDecisionBoundary(type, currentQuestion, totalQuestions, remaining);
+            assertEquals("end", result,
+                    "用户 bug 场景：2 题面试第 2 题的 next_question 必须转为 end，避免'进入下一题'后突然结束");
         }
     }
 

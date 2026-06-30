@@ -20,21 +20,38 @@ export function sendMessage(interviewId, content) {
 /**
  * 流式发送消息 — 使用 fetch POST + ReadableStream 解析 SSE
  * 返回 Promise，成功时 resolve(meta)，失败时 reject(error)
+ * 带 15 秒超时：若 15 秒内未收到第一个 chunk，自动 reject 降级到非流式
  */
 export function sendMessageStream(interviewId, content, onChunk) {
   const userStore = useUserStore()
   const token = userStore.token
 
   return new Promise((resolve, reject) => {
+    const controller = new AbortController()
+    let settled = false
+    let firstChunkReceived = false
+
+    // 15 秒超时：如果 15 秒内没收到第一个 chunk，直接降级
+    const timeoutTimer = setTimeout(() => {
+      if (!settled && !firstChunkReceived) {
+        settled = true
+        controller.abort()
+        reject(new Error('流式超时，降级到非流式'))
+      }
+    }, 15000)
+
     fetch(`/api/interview/${interviewId}/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content }),
+      signal: controller.signal
     }).then(async (response) => {
       if (!response.ok) {
+        clearTimeout(timeoutTimer)
+        settled = true
         reject(new Error(`请求失败 (${response.status})`))
         return
       }
@@ -58,12 +75,19 @@ export function sendMessageStream(interviewId, content, onChunk) {
           } else if (line.startsWith('data: ')) {
             const data = line.slice(6)
             if (eventType === 'chunk') {
+              if (!firstChunkReceived) {
+                firstChunkReceived = true
+                clearTimeout(timeoutTimer)
+              }
               onChunk(data)
             } else if (eventType === 'meta') {
+              clearTimeout(timeoutTimer)
               try {
                 const meta = JSON.parse(data)
+                settled = true
                 resolve(meta)
               } catch (e) {
+                settled = true
                 reject(new Error('解析元数据失败'))
               }
               return
@@ -72,9 +96,15 @@ export function sendMessageStream(interviewId, content, onChunk) {
         }
       }
       // 流正常结束但没有 meta（异常情况）
+      clearTimeout(timeoutTimer)
+      settled = true
       reject(new Error('流意外结束'))
     }).catch((err) => {
-      reject(err)
+      clearTimeout(timeoutTimer)
+      if (!settled) {
+        settled = true
+        reject(err)
+      }
     })
   })
 }

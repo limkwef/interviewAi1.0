@@ -17,6 +17,7 @@ public class InterviewSession {
     private String questionIds;
     private Long resumeId;
     private String interviewType;  // normal / resume
+    private Long modelId;           // 使用的AI模型ID
     private String status;
     private String evaluateStatus;      // evaluating / evaluate_failed / null
     private String evaluateError;       // 评估失败原因

@@ -3,7 +3,7 @@ package org.backend.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.backend.entity.Resume;
-import org.backend.entity.ResumeData;
+import org.backend.vo.ResumeData;
 import org.backend.exception.BusinessException;
 import org.backend.mapper.ResumeMapper;
 import org.backend.util.AIService;

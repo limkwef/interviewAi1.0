@@ -69,4 +69,8 @@
         DELETE FROM diagnosis_report WHERE id = #{id}
     </delete>
 
+    <update id="updateLearningPlan">
+        UPDATE diagnosis_report SET learning_plan = #{learningPlan} WHERE id = #{id}
+    </update>
+
 </mapper>

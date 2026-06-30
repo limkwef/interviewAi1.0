@@ -1,9 +1,9 @@
 package org.backend.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.backend.entity.DiagnosisDataVO;
+import org.backend.vo.DiagnosisDataVO;
 import org.backend.entity.Question;
-import org.backend.entity.ReportResultVO;
+import org.backend.vo.ReportResultVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -114,6 +114,38 @@ public class ScoringEngine {
         int end = text.lastIndexOf("}");
         if (start >= 0 && end > start) return text.substring(start, end + 1);
         return text;
+    }
+
+    /**
+     * 决策类型边界保护（统一规则，避免散落在多个调用点）：
+     * <ul>
+     *   <li>非最后一题：AI 想结束面试（end）时，降级为进入下一题（next_question），防止过早结束</li>
+     *   <li>最后一题：AI 想进入下一题（next_question）时，强制结束面试（end），避免出现"进入下一题"后突然结束的体验</li>
+     *   <li>无剩余题目：强制结束</li>
+     * </ul>
+     *
+     * @param type           AI 解析出的决策类型（follow_up / next_question / end / answer）
+     * @param currentQuestion 当前题号（0-based）
+     * @param totalQuestions  总题数
+     * @param remaining       剩余题数（totalQuestions - currentQuestion）
+     * @return 边界保护后的决策类型
+     */
+    public String enforceDecisionBoundary(String type, int currentQuestion, int totalQuestions, int remaining) {
+        if (type == null) type = "next_question";
+        boolean isLastQuestion = totalQuestions > 0 && currentQuestion + 1 >= totalQuestions;
+        // 非最后一题：end → next_question（防止 AI 过早结束面试）
+        if ("end".equals(type) && remaining > 0 && !isLastQuestion) {
+            return "next_question";
+        }
+        // 最后一题：next_question → end（没有下一题了，避免"进入下一题"后突然结束）
+        if ("next_question".equals(type) && isLastQuestion) {
+            return "end";
+        }
+        // 无剩余题目：强制结束
+        if (remaining <= 0) {
+            return "end";
+        }
+        return type;
     }
 
     // ======================== 系统公式算总分（核心） ========================

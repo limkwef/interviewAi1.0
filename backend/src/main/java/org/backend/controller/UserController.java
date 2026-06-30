@@ -6,7 +6,7 @@ import org.backend.common.Result;
 import org.backend.dto.ChangePasswordRequest;
 import org.backend.dto.UpdateUserRequest;
 import org.backend.entity.User;
-import org.backend.entity.UserInfoVO;
+import org.backend.vo.UserInfoVO;
 import org.backend.exception.BusinessException;
 import org.backend.service.UserService;
 import org.slf4j.Logger;

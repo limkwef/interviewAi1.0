@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import org.backend.entity.DashboardVO;
+import org.backend.vo.DashboardVO;
 import org.backend.entity.InterviewReport;
 import org.backend.entity.InterviewSession;
 import org.backend.entity.Question;

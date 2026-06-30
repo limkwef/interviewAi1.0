@@ -12,23 +12,23 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import org.backend.entity.AIResultVO;
+import org.backend.vo.AIResultVO;
 import org.backend.util.PositionConstants;
-import org.backend.entity.EndInterviewVO;
-import org.backend.entity.InterviewCreateVO;
-import org.backend.entity.InterviewHistoryVO;
+import org.backend.vo.EndInterviewVO;
+import org.backend.vo.InterviewCreateVO;
+import org.backend.vo.InterviewHistoryVO;
 import org.backend.entity.InterviewMessage;
 import org.backend.entity.InterviewReport;
-import org.backend.entity.PollStatusVO;
+import org.backend.vo.PollStatusVO;
 import org.backend.entity.InterviewSession;
 import org.backend.entity.Question;
 import org.backend.entity.ReportComment;
-import org.backend.entity.ReportResultVO;
+import org.backend.vo.ReportResultVO;
 import org.backend.entity.Resume;
-import org.backend.entity.SendMessageVO;
-import org.backend.entity.SessionInfoVO;
-import org.backend.entity.StreamMetaVO;
-import org.backend.entity.WrongAnswerDTO;
+import org.backend.vo.SendMessageVO;
+import org.backend.vo.SessionInfoVO;
+import org.backend.vo.StreamMetaVO;
+import org.backend.dto.WrongAnswerDTO;
 import org.backend.exception.BusinessException;
 import org.backend.mapper.InterviewMessageMapper;
 import org.backend.mapper.InterviewReportMapper;
@@ -524,7 +524,7 @@ public class InterviewService {
         String userPrompt = promptBuilder.buildStreamUserPrompt(
                 session.getCurrentQuestion(), currentQuestionText,
                 content, nextQuestionText, remaining, history,
-                session.getMaxFollowUp());
+                session.getMaxFollowUp(), session.getQuestionCount());
 
         // 追问次数预检：如果已超限，覆盖 prompt 强制跳题，防止 AI 生成追问内容
         if (session.getMaxFollowUp() <= 0) {
@@ -602,9 +602,9 @@ public class InterviewService {
                 String type = parseDecisionType(rawAiContent);
                 String aiContent = stripDecisionMarker(rawAiContent);
 
-                // 边界保护
-                if ("end".equals(type) && remaining > 0) type = "next_question";
-                if (remaining <= 0) type = "end";
+                // 边界保护：非最后一题 end→next_question 防过早结束；最后一题 next_question→end 防"进入下一题"后突然结束
+                type = scoringEngine.enforceDecisionBoundary(type,
+                        session.getCurrentQuestion(), session.getQuestionCount(), remaining);
 
                 // 追问次数限制（流式场景：超限时替换 AI 内容为兜底文案）
                 String enforcedType = enforceFollowUpLimit(sessionId, session.getCurrentQuestion(),

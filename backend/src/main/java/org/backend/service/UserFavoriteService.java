@@ -28,14 +28,20 @@ public class UserFavoriteService {
     }
 
     @Transactional
-    public void addFavorite(Long userId, Long questionId) {
+    public boolean addFavorite(Long userId, Long questionId) {
         // 检查题目是否存在
         Question question = questionMapper.findById(questionId);
         if (question == null) {
             throw new BusinessException(404, "题目不存在");
         }
 
-        // 原子化插入（INSERT IGNORE + 唯一索引防重复）
+        // 检查是否已收藏
+        boolean alreadyFavorite = isFavorite(userId, questionId);
+        if (alreadyFavorite) {
+            return false; // 已收藏，返回false表示重复
+        }
+
+        // 原子化插入
         UserFavorite favorite = new UserFavorite();
         favorite.setUserId(userId);
         favorite.setQuestionId(questionId);
@@ -43,9 +49,9 @@ public class UserFavoriteService {
         if (inserted > 0) {
             questionMapper.incrementFavoriteCount(questionId);
             logger.info("用户{}收藏题目{}", userId, questionId);
-        } else {
-            logger.debug("用户{}已收藏题目{}，跳过重复", userId, questionId);
+            return true;
         }
+        return false;
     }
 
     @Transactional

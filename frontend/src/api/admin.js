@@ -111,6 +111,59 @@ export function getLogList(params) {
   })
 }
 
+// AI模型管理
+export function getAiModelList() {
+  return request({
+    url: '/admin/ai-models',
+    method: 'get'
+  })
+}
+
+export function getAiModelById(id) {
+  return request({
+    url: `/admin/ai-models/${id}`,
+    method: 'get'
+  })
+}
+
+export function addAiModel(data) {
+  return request({
+    url: '/admin/ai-models',
+    method: 'post',
+    data
+  })
+}
+
+export function updateAiModel(id, data) {
+  return request({
+    url: `/admin/ai-models/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+export function deleteAiModel(id) {
+  return request({
+    url: `/admin/ai-models/${id}`,
+    method: 'delete'
+  })
+}
+
+export function setDefaultAiModel(id) {
+  return request({
+    url: `/admin/ai-models/${id}/set-default`,
+    method: 'post'
+  })
+}
+
+export function testAiModel(id) {
+  return request({
+    url: `/admin/ai-models/${id}/test`,
+    method: 'post',
+    timeout: 30000
+  })
+}
+
 // 反馈管理
 export function getFeedbackList(params) {
   return request({

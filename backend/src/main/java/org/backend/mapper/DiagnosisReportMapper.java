@@ -18,4 +18,5 @@ public interface DiagnosisReportMapper {
     List<DiagnosisReport> findByUserId(@Param("userId") Long userId, @Param("offset") int offset, @Param("size") int size);
     int countByUserId(Long userId);
     int deleteById(Long id);
+    int updateLearningPlan(DiagnosisReport report);
 }

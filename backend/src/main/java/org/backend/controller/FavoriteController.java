@@ -26,8 +26,12 @@ public class FavoriteController extends BaseController {
     @PostMapping("/{questionId}")
     public Result<?> addFavorite(HttpServletRequest request, @PathVariable Long questionId) {
         Long userId = getUserIdFromToken(request);
-        userFavoriteService.addFavorite(userId, questionId);
-        return Result.success("收藏成功", null);
+        boolean isNew = userFavoriteService.addFavorite(userId, questionId);
+        if (isNew) {
+            return Result.success("收藏成功", null);
+        } else {
+            return Result.success("已收藏", null);
+        }
     }
 
     @DeleteMapping("/{questionId}")

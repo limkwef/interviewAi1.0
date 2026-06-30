@@ -3,13 +3,13 @@ package org.backend.util;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.backend.entity.AIResultVO;
-import org.backend.entity.DiagnosisDataVO;
+import org.backend.vo.AIResultVO;
+import org.backend.vo.DiagnosisDataVO;
 import org.backend.entity.InterviewReport;
 import org.backend.entity.InterviewMessage;
 import org.backend.entity.Question;
 import org.backend.entity.ReportComment;
-import org.backend.entity.ReportResultVO;
+import org.backend.vo.ReportResultVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -458,8 +458,7 @@ public class AIService {
                 content += "\n\n" + nextQuestionStr;
             }
 
-            if ("end".equals(type) && remaining > 0) type = "next_question";
-            if (remaining <= 0) type = "end";
+            type = scoringEngine.enforceDecisionBoundary(type, currentQuestion, totalQuestions, remaining);
 
             result.setContent(content.isEmpty() ? scoringEngine.generateFeedback(difficulty) : content);
             result.setType(type);
@@ -477,8 +476,7 @@ public class AIService {
             String type = scoringEngine.parseDecisionType(aiResponse);
             aiResponse = scoringEngine.stripDecisionMarker(aiResponse);
 
-            if ("end".equals(type) && remaining > 0) type = "next_question";
-            if (remaining <= 0) type = "end";
+            type = scoringEngine.enforceDecisionBoundary(type, currentQuestion, totalQuestions, remaining);
 
             result.setContent(aiResponse);
             result.setType(type);
@@ -518,7 +516,7 @@ public class AIService {
 
         // 使用简历面试专用 user prompt
         String userPrompt = promptBuilder.buildStreamUserPrompt(
-                currentQuestion, "", userAnswer, "", remaining, history, maxFollowUp);
+                currentQuestion, "", userAnswer, "", remaining, history, maxFollowUp, totalQuestions);
 
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", systemPrompt));
@@ -533,8 +531,7 @@ public class AIService {
             String type = scoringEngine.parseDecisionType(aiResponse);
             aiResponse = scoringEngine.stripDecisionMarker(aiResponse);
 
-            if ("end".equals(type) && remaining > 0) type = "next_question";
-            if (remaining <= 0) type = "end";
+            type = scoringEngine.enforceDecisionBoundary(type, currentQuestion, totalQuestions, remaining);
 
             result.setContent(aiResponse);
             result.setType(type);

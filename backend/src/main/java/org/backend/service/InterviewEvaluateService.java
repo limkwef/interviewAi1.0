@@ -1,7 +1,10 @@
 package org.backend.service;
 
+import org.backend.agent.memory.LongTermMemory;
 import org.backend.entity.*;
 import org.backend.mapper.*;
+import org.backend.vo.ReportResultVO;
+import org.backend.dto.WrongAnswerDTO;
 import org.backend.util.AIService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +32,7 @@ public class InterviewEvaluateService {
     private final AIDiagnosisService diagnosisService;
     private final InterviewContextService contextService;
     private final TransactionTemplate transactionTemplate;
+    private final LongTermMemory longTermMemory;
 
     public InterviewEvaluateService(InterviewSessionMapper sessionMapper,
                                      InterviewReportMapper reportMapper,
@@ -39,7 +43,8 @@ public class InterviewEvaluateService {
                                      MistakeService mistakeService,
                                      AIDiagnosisService diagnosisService,
                                      InterviewContextService contextService,
-                                     TransactionTemplate transactionTemplate) {
+                                     TransactionTemplate transactionTemplate,
+                                     LongTermMemory longTermMemory) {
         this.sessionMapper = sessionMapper;
         this.reportMapper = reportMapper;
         this.commentMapper = commentMapper;
@@ -50,6 +55,7 @@ public class InterviewEvaluateService {
         this.diagnosisService = diagnosisService;
         this.contextService = contextService;
         this.transactionTemplate = transactionTemplate;
+        this.longTermMemory = longTermMemory;
     }
 
     /**
@@ -128,6 +134,13 @@ public class InterviewEvaluateService {
             diagnosisService.generateDiagnosisReport(sessionId);
         } catch (Exception e) {
             logger.error("生成诊断报告失败", e);
+        }
+
+        // Agent 反思：面试结束后总结经验，存入长期记忆
+        try {
+            longTermMemory.reflect(userId, sessionId);
+        } catch (Exception e) {
+            logger.error("Agent 反思失败", e);
         }
 
         logger.info("用户{}结束面试{}，报告{}", userId, sessionId, report.getId());

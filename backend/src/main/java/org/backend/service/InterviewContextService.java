@@ -42,8 +42,16 @@ public class InterviewContextService {
     @Autowired(required = false)
     private CacheService cacheService;
 
+    /** Redis 是否可用（运作中首次异常时置为 false，之后跳过所有操作） */
+    private volatile boolean redisAvailable = true;
+
     private boolean isRedisAvailable() {
-        return redisTemplate != null;
+        if (!redisAvailable) return false;
+        if (redisTemplate == null) {
+            redisAvailable = false;
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -154,15 +162,18 @@ public class InterviewContextService {
      */
     public int getFollowUpCount(Long sessionId, int questionIndex, InterviewMessageMapper messageMapper) {
         // 1. 优先 Redis
-        try {
-            String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
-            Integer count = (Integer) redisTemplate.opsForValue().get(key);
-            if (count != null) {
-                logger.info("从 Redis 获取追问次数：sessionId={}, questionIndex={}, count={}", sessionId, questionIndex, count);
-                return count;
+        if (isRedisAvailable()) {
+            try {
+                String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
+                Integer count = (Integer) redisTemplate.opsForValue().get(key);
+                if (count != null) {
+                    logger.info("从 Redis 获取追问次数：sessionId={}, questionIndex={}, count={}", sessionId, questionIndex, count);
+                    return count;
+                }
+            } catch (Exception e) {
+                redisAvailable = false;
+                logger.warn("Redis 获取追问次数失败，降级到 MySQL，sessionId={}, questionIndex={}", sessionId, questionIndex, e);
             }
-        } catch (Exception e) {
-            logger.warn("Redis 获取追问次数失败，降级到 MySQL，sessionId={}, questionIndex={}", sessionId, questionIndex, e);
         }
 
         // 2. Redis 降级：从 MySQL 消息表计算追问次数
@@ -178,10 +189,12 @@ public class InterviewContextService {
             }
             logger.info("从 MySQL 计算追问次数：sessionId={}, questionIndex={}, count={}", sessionId, questionIndex, followUpCount);
             // 写回 Redis（下次直接命中）
-            try {
-                String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
-                redisTemplate.opsForValue().set(key, followUpCount, CONTEXT_TTL_HOURS, TimeUnit.HOURS);
-            } catch (Exception ignored) {}
+            if (isRedisAvailable()) {
+                try {
+                    String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
+                    redisTemplate.opsForValue().set(key, followUpCount, CONTEXT_TTL_HOURS, TimeUnit.HOURS);
+                } catch (Exception ignored) {}
+            }
             return followUpCount;
         } catch (Exception e) {
             logger.error("MySQL 计算追问次数失败", e);
@@ -193,12 +206,14 @@ public class InterviewContextService {
      * 追问次数 +1
      */
     public void incrementFollowUp(Long sessionId, int questionIndex) {
+        if (!isRedisAvailable()) return;
         try {
             String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
             Long newValue = redisTemplate.opsForValue().increment(key);
             redisTemplate.expire(key, CONTEXT_TTL_HOURS, TimeUnit.HOURS);
             logger.info("追问次数递增：sessionId={}, questionIndex={}, newValue={}", sessionId, questionIndex, newValue);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.error("递增追问次数失败", e);
         }
     }
@@ -207,10 +222,12 @@ public class InterviewContextService {
      * 清除追问计数（跳题时调用）
      */
     public void clearFollowUp(Long sessionId, int questionIndex) {
+        if (!isRedisAvailable()) return;
         try {
             String key = FOLLOWUP_KEY + sessionId + ":" + questionIndex;
             redisTemplate.delete(key);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.error("清除追问计数失败", e);
         }
     }
@@ -280,10 +297,12 @@ public class InterviewContextService {
      * 缓存面试题目列表
      */
     public void cacheQuestions(Long sessionId, List<org.backend.entity.Question> questions) {
+        if (!isRedisAvailable()) return;
         try {
             String key = QUESTIONS_CACHE_KEY + sessionId;
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(questions), CONTEXT_TTL_HOURS, TimeUnit.HOURS);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("缓存面试题目失败，sessionId={}", sessionId, e);
         }
     }
@@ -293,6 +312,7 @@ public class InterviewContextService {
      */
     @SuppressWarnings("unchecked")
     public List<org.backend.entity.Question> getCachedQuestions(Long sessionId) {
+        if (!isRedisAvailable()) return null;
         try {
             String key = QUESTIONS_CACHE_KEY + sessionId;
             String json = (String) redisTemplate.opsForValue().get(key);
@@ -300,6 +320,7 @@ public class InterviewContextService {
                 return objectMapper.readValue(json, objectMapper.getTypeFactory().constructCollectionType(List.class, org.backend.entity.Question.class));
             }
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("读取缓存题目失败，sessionId={}", sessionId, e);
         }
         return null;
@@ -309,9 +330,11 @@ public class InterviewContextService {
      * 清除题目缓存
      */
     public void clearQuestionsCache(Long sessionId) {
+        if (!isRedisAvailable()) return;
         try {
             redisTemplate.delete(QUESTIONS_CACHE_KEY + sessionId);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("清除题目缓存失败，sessionId={}", sessionId, e);
         }
     }
@@ -324,10 +347,12 @@ public class InterviewContextService {
      * 缓存整个 InterviewSession 对象
      */
     public void cacheSession(org.backend.entity.InterviewSession session) {
+        if (!isRedisAvailable()) return;
         try {
             String key = SESSION_CACHE_KEY + session.getId();
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(session), CONTEXT_TTL_HOURS, TimeUnit.HOURS);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("缓存会话失败，sessionId={}", session.getId(), e);
         }
     }
@@ -336,6 +361,7 @@ public class InterviewContextService {
      * 获取缓存的 InterviewSession
      */
     public org.backend.entity.InterviewSession getCachedSession(Long sessionId) {
+        if (!isRedisAvailable()) return null;
         try {
             String key = SESSION_CACHE_KEY + sessionId;
             String json = (String) redisTemplate.opsForValue().get(key);
@@ -343,6 +369,7 @@ public class InterviewContextService {
                 return objectMapper.readValue(json, org.backend.entity.InterviewSession.class);
             }
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("读取缓存会话失败，sessionId={}", sessionId, e);
         }
         return null;
@@ -352,6 +379,7 @@ public class InterviewContextService {
      * 更新缓存中的会话字段（部分更新，避免全量覆写）
      */
     public void updateCachedSession(Long sessionId, String field, Object value) {
+        if (!isRedisAvailable()) return;
         try {
             org.backend.entity.InterviewSession cached = getCachedSession(sessionId);
             if (cached != null) {
@@ -367,6 +395,7 @@ public class InterviewContextService {
                 cacheSession(cached);
             }
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("更新缓存会话失败，sessionId={}, field={}", sessionId, field, e);
         }
     }
@@ -375,9 +404,11 @@ public class InterviewContextService {
      * 清除会话缓存
      */
     public void clearSessionCache(Long sessionId) {
+        if (!isRedisAvailable()) return;
         try {
             redisTemplate.delete(SESSION_CACHE_KEY + sessionId);
         } catch (Exception e) {
+            redisAvailable = false;
             logger.warn("清除会话缓存失败，sessionId={}", sessionId, e);
         }
     }

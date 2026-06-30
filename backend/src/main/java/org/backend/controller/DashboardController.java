@@ -2,7 +2,7 @@ package org.backend.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.backend.common.Result;
-import org.backend.entity.DashboardVO;
+import org.backend.vo.DashboardVO;
 import org.backend.service.DashboardService;
 import org.backend.service.ReportService;
 import org.slf4j.Logger;

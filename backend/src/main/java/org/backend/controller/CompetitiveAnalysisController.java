@@ -1,7 +1,7 @@
 package org.backend.controller;
 
 import org.backend.common.Result;
-import org.backend.entity.CompetitiveAnalysis;
+import org.backend.vo.CompetitiveAnalysis;
 import org.backend.service.CompetitiveAnalysisService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;

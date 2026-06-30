@@ -2,10 +2,10 @@ package org.backend.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.backend.common.Result;
-import org.backend.entity.CheckAnswerVO;
-import org.backend.entity.MistakeDetailVO;
-import org.backend.entity.MistakeListVO;
-import org.backend.entity.MistakeStatsVO;
+import org.backend.vo.CheckAnswerVO;
+import org.backend.vo.MistakeDetailVO;
+import org.backend.vo.MistakeListVO;
+import org.backend.vo.MistakeStatsVO;
 import org.backend.service.MistakeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

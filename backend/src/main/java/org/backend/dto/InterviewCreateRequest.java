@@ -29,5 +29,7 @@ public class InterviewCreateRequest {
 
     private Long resumeId;
 
+    private Long modelId;
+
     private String interviewType = "normal";
 }

@@ -18,6 +18,7 @@ Thumbs.db
 *.log
 backend.log
 server_log.txt
+Agent改造实现方案.md
 
 # === 测试/自动化 ===
 playwright/
@@ -34,9 +35,14 @@ frontend/node_modules/
 backend/.mvn/wrapper/maven-wrapper.jar
 
 # === 敏感配置（应使用环境变量） ===
+# application.yml 仅含 ${ENV_VAR} 占位符，可提交
+# application-local*.yml 含真实密钥，禁止提交
 backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-local*.yml
 *.env
 .env.local
+# 明确不忽略配置模板
+!backend/src/main/resources/application.yml.example
 
 # === 用户上传数据（保留目录结构） ===
 backend/uploads/avatars/*
@@ -45,6 +51,9 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/avatars/
 !backend/uploads/
+
+# === IDE/工具 工作区 ===
+.workbuddy/
 
 # === 非代码目录（课设文档等） ===
 Redis-8.8.0-Windows-x64-msys2-with-Service/
@@ -61,5 +70,12 @@ docs/
 最终补充.txt
 AI面试系统_*.md
 上线优化清单.md
+项目改进实施方案.md
 start.bat
 科研训练/
+
+# === 数据库备份（非代码） ===
+interview_backup_*.sql
+
+# === 包锁文件（自动生成） ===
+package-lock.json
