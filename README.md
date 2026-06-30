@@ -50,6 +50,18 @@
 - 简历面试模式（AI 根据简历内容针对性提问）
 - 简历版本管理（多份简历切换、激活）
 
+### 🧠 AI Agent 引擎
+- 自主 Agent 驱动面试流程：感知 → 推理 → 行动循环
+- 短期记忆（会话上下文）+ 长期记忆（用户画像、历史表现）
+- 工具注册机制：知识检索、错题记录、难度调节、诊断触发
+- 自适应面试策略：根据用户表现动态调整题目难度和方向
+
+### 🤖 多模型支持
+- 可配置多 AI 模型（DeepSeek、GPT、Qwen 等）
+- 模型管理后台：在线切换、参数配置、启用/禁用
+- 每个面试会话可指定使用模型
+- 支持流式输出和结构化 JSON 输出
+
 ### 🎤 语音能力
 - 语音输入（百度 ASR）
 - AI 回复朗读（百度 TTS）
@@ -81,7 +93,7 @@
 | Redis | 缓存 + 上下文存储 + 分布式锁 |
 | JWT (jjwt 0.12) | 身份认证 |
 | Spring Security Crypto | BCrypt 密码加密 |
-| DeepSeek API | AI 对话模型 |
+| DeepSeek API（默认） | AI 对话模型，支持多模型可配置（GPT、Qwen 等），含管理后台 |
 | 百度语音 API | ASR + TTS |
 | SSE | 流式响应 |
 | Apache PDFBox | PDF 文本提取 |
@@ -101,17 +113,18 @@
 -- 创建数据库
 CREATE DATABASE interview DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- 执行建表脚本（项目启动后由 MyBatis 自动建表，或手动执行 seed.sql 中的表结构）
+-- 执行建表脚本
 USE interview;
+source backend/init.sql
 
--- 导入测试数据（可选）
-source backend/seed.sql
+-- 导入 AI 模型配置（可选）
+source backend/src/main/resources/db/ai_model_init.sql
 ```
 
 ### 2. 配置后端
 复制并编辑配置文件：
 ```bash
-cp backend/src/main/resources/application.yml backend/src/main/resources/application-local.yml
+cp backend/src/main/resources/application.yml.example backend/src/main/resources/application-local.yml
 ```
 
 编辑 `application-local.yml`，填入你的实际配置：
@@ -136,7 +149,7 @@ baidu:
     secret-key: xxx                   # 百度语音 Secret Key
 ```
 
-> **注意**：`application.yml` 中的敏感信息已替换为环境变量占位符，本地开发请使用 `application-local.yml`（已在 `.gitignore` 中排除）。
+> **注意**：`application.yml` 中的敏感信息已改为环境变量占位符（`${ENV_VAR}`），未配置时启动失败（fail-fast）。本地开发请复制 `application.yml.example` 为 `application-local.yml` 并填入真实值（`application-local.yml` 已在 `.gitignore` 中排除，不会提交）。生产环境通过环境变量注入。
 
 ### 3. 启动后端
 ```bash
@@ -171,7 +184,8 @@ interview-ai/
 │   │   ├── styles/               # 全局样式
 │   │   ├── utils/                # 工具函数
 │   │   └── views/                # 页面视图
-│   │       ├── admin/            # 管理后台
+│   │       ├── admin/            # 管理后台（用户/题库/模型）
+│   │       │   └── ai-model/     # AI 模型配置管理
 │   │       ├── dashboard/        # 仪表盘
 │   │       ├── interview/        # 面试（配置 + 会话）
 │   │       ├── learning-path/    # 学习路径
@@ -179,16 +193,20 @@ interview-ai/
 │   │       ├── questions/        # 题库（列表/详情/收藏/错题）
 │   │       ├── register/         # 注册
 │   │       ├── report/           # 报告（详情/诊断）
-│   │       └── resume/           # 简历管理
+│   │       ├── resume-manage/    # 简历管理
+│   │       └── settings/         # 系统设置
 │   ├── index.html
 │   └── vite.config.js
 │
 ├── backend/                      # Spring Boot 后端
 │   └── src/main/java/org/backend/
+│       ├── agent/                # AI Agent 引擎（感知→推理→行动）
+│       │   ├── memory/           # 短期/长期记忆
+│       │   └── tool/             # 工具注册（知识检索、错题记录等）
 │       ├── config/               # 配置类（Security、JWT、异步、跨域）
 │       ├── controller/           # 控制器
 │       ├── dto/                  # 数据传输对象
-│       ├── entity/               # 实体 + VO
+│       ├── entity/               # 实体
 │       ├── exception/            # 全局异常处理
 │       ├── interceptor/          # 拦截器（限流、用户认证）
 │       ├── mapper/               # MyBatis 映射接口 + XML
@@ -200,14 +218,22 @@ interview-ai/
 │       │   ├── LearningPathService       # 学习路径规划
 │       │   ├── QuestionSelector          # 智能抽题策略
 │       │   ├── ResumeService             # 简历解析与管理
+│       │   ├── AiModelService            # AI 模型管理
 │       │   └── ...
+│       ├── vo/                   # 视图对象（原 entity/vo）
 │       └── util/                 # 工具类
-│           ├── AIService         # DeepSeek API 调用 + 熔断器
+│           ├── AIService         # AI API 调用 + 熔断器
 │           ├── PromptBuilder     # Prompt 模板管理
 │           ├── ScoringEngine     # 评分引擎 + 降级策略
 │           └── JwtUtil           # JWT 工具
 │
-├── seed.sql                      # 数据库初始化脚本
+│   └── src/main/resources/
+│       ├── db/                   # 数据库迁移脚本
+│       ├── sql/                  # SQL 脚本
+│       ├── prompts/              # AI Prompt 模板
+│       └── mapper/               # MyBatis XML 映射
+│
+├── backend/init.sql              # 数据库初始化脚本
 └── README.md
 ```
 
@@ -222,7 +248,7 @@ interview-ai/
 3. **模板化兜底** → 确定性算法，不依赖 AI
 
 ### 🛡️ 熔断器模式
-- 连续 5 次 AI 调用失败后自动熔断 30 秒
+- 连续 3 次 AI 调用失败后自动熔断 60 秒
 - 半开状态允许试探调用
 - 防止雪崩效应
 
@@ -240,7 +266,7 @@ interview-ai/
 ### 🔐 安全架构
 - Spring Security + JWT 双重认证
 - 角色权限控制（普通用户 / 管理员）
-- 接口限流（Redis 令牌桶）
+- 接口限流（Redis 滑动窗口）
 - BCrypt 密码加密
 
 ### 📄 简历 AI 解析
